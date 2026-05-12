@@ -1,0 +1,38 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "nome": "Admin",
+      "cargo": "Diretor",
+      "email": "diretor@escola.com",
+      "permissoes": [
+        "EDIT",
+        "REPORTS"
+      ]
+    },
+    {
+      "id": 2,
+      "nome": "Maria",
+      "cargo": "Cozinheira",
+      "email": "cozinha@escola.com",
+      "permissoes": [
+        "CONSUME"
+      ]
+    }
+  ],
+  "estoque": [
+    {
+      "id": 1,
+      "item": "Arroz",
+      "quantidade": 455,
+      "unidade": "kg"
+    },
+    {
+      "id": 2,
+      "item": "Feijão",
+      "quantidade": 30,
+      "unidade": "kg"
+    }
+  ],
+  "consumo_log": []
+}
