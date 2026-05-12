@@ -1,6 +1,7 @@
 const API_URL = 'http://localhost:3000';
 let usuarioLogado = null;
-let meuGrafico = null; // Guardará a instância do gráfico para podermos atualizá-lo
+let meuGrafico = null;
+let estoqueLocal = []; 
 
 // --- FUNÇÃO DE AUTENTICAÇÃO ---
 
@@ -25,20 +26,21 @@ async function logar() {
 
         usuarioLogado = await response.json();
         
-        // Esconde a tela de login
         document.getElementById('login-view').classList.add('hidden');
         
         if (usuarioLogado.cargo === 'Cozinheira') {
             document.getElementById('cozinha-view').classList.remove('hidden');
             document.getElementById('user-display').innerText = usuarioLogado.nome;
+            carregarSelectCozinha();
         } 
         else if (usuarioLogado.cargo === 'Diretor') {
             document.getElementById('diretor-view').classList.remove('hidden');
             document.getElementById('admin-display').innerText = usuarioLogado.nome;
             
-            // Ao logar como diretor, já carrega os dados visuais
+            // Inicializa dados do Diretor
             renderizarGrafico();
             verGastoDoDia();
+            carregarSelectExclusao(); // Carrega a lista para deletar itens
         }
 
     } catch (error) {
@@ -47,6 +49,40 @@ async function logar() {
 }
 
 // --- FUNÇÕES DA COZINHEIRA ---
+
+async function carregarSelectCozinha() {
+    try {
+        const res = await fetch(`${API_URL}/lista-estoque`);
+        estoqueLocal = await res.json();
+        
+        const select = document.getElementById('alimento');
+        if (!select) return;
+
+        if (estoqueLocal.length === 0) {
+            select.innerHTML = '<option value="">Nenhum item disponível</option>';
+            return;
+        }
+
+        select.innerHTML = estoqueLocal.map(item => 
+            `<option value="${item.item}">${item.item}</option>`
+        ).join('');
+        
+        mostrarInfoExtra();
+    } catch (error) {
+        console.error("Erro ao carregar estoque:", error);
+    }
+}
+
+function mostrarInfoExtra() {
+    const nomeSelecionado = document.getElementById('alimento').value;
+    const item = estoqueLocal.find(i => i.item === nomeSelecionado);
+    
+    if (item) {
+        document.getElementById('display-lote').innerText = item.lote || 'N/A';
+        document.getElementById('display-validade').innerText = item.validade || 'N/A';
+        document.getElementById('display-atual').innerText = `${item.quantidade} ${item.unidade || 'kg'}`;
+    }
+}
 
 async function enviarBaixa() {
     const itemNome = document.getElementById('alimento').value;
@@ -72,8 +108,9 @@ async function enviarBaixa() {
         const data = await response.json();
 
         if (response.ok) {
-            msgElement.innerText = `✅ Estoque atualizado! Novo saldo: ${data.novoEstoque}kg`;
+            msgElement.innerText = `✅ Baixa confirmada!`;
             document.getElementById('qtd').value = ''; 
+            await carregarSelectCozinha();
         } else {
             alert(data.error);
         }
@@ -84,46 +121,96 @@ async function enviarBaixa() {
 
 // --- FUNÇÕES DO DIRETOR ---
 
-// 1. EDITAR ESTOQUE (Altera o valor diretamente no banco)
-async function atualizarEstoqueBanco() {
-    const itemNome = document.getElementById('edit-alimento').value;
-    const novaQuantidade = document.getElementById('nova-qtd').value;
+// Função para popular o select de exclusão
+async function carregarSelectExclusao() {
+    try {
+        const res = await fetch(`${API_URL}/lista-estoque`);
+        const itens = await res.json();
+        const select = document.getElementById('delete-alimento-select');
+        
+        if (select) {
+            select.innerHTML = '<option value="">Selecione para excluir...</option>' + 
+                itens.map(i => `<option value="${i.item}">${i.item}</option>`).join('');
+        }
+    } catch (error) {
+        console.error("Erro ao carregar lista de exclusão");
+    }
+}
 
-    if (!novaQuantidade || novaQuantidade < 0) {
-        alert("Digite uma quantidade válida para atualizar.");
+// NOVA FUNÇÃO: Remover item do banco
+async function removerItemEstoque() {
+    const item = document.getElementById('delete-alimento-select').value;
+
+    if (!item) {
+        alert("Selecione um alimento para excluir.");
+        return;
+    }
+
+    if (!confirm(`⚠️ ATENÇÃO: Deseja apagar permanentemente o item "${item}"?`)) {
         return;
     }
 
     try {
-        const response = await fetch(`${API_URL}/estoque`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ itemNome, novaQuantidade: Number(novaQuantidade) })
+        const response = await fetch(`${API_URL}/estoque/${item}`, {
+            method: 'DELETE'
         });
 
         const data = await response.json();
+
         if (response.ok) {
-            alert(`✅ Banco de Dados atualizado! ${itemNome} agora possui ${novaQuantidade}kg.`);
-            document.getElementById('nova-qtd').value = '';
-            
-            // Atualiza o gráfico se ele estiver visível
+            alert(data.message);
+            // Atualiza todas as listas e o gráfico
+            carregarSelectExclusao();
             renderizarGrafico();
+            verGastoDoDia();
         } else {
             alert("Erro: " + data.error);
         }
     } catch (error) {
-        alert("Erro ao conectar com o banco de dados.");
+        alert("Erro ao conectar com o servidor.");
     }
 }
 
-// 2. CONSULTAR GASTO DO DIA
+async function adicionarNovoEstoque() {
+    const item = document.getElementById('add-nome').value;
+    const quantidade = document.getElementById('add-qtd').value;
+    const lote = document.getElementById('add-lote').value;
+    const validade = document.getElementById('add-validade').value;
+
+    if (!item || !quantidade || !lote || !validade) {
+        alert("Preencha todos os campos.");
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/estoque/adicionar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item, quantidade, lote, validade })
+        });
+
+        if (response.ok) {
+            alert("✅ Sucesso!");
+            document.getElementById('add-nome').value = '';
+            document.getElementById('add-qtd').value = '';
+            document.getElementById('add-lote').value = '';
+            document.getElementById('add-validade').value = '';
+            
+            renderizarGrafico();
+            verGastoDoDia();
+            carregarSelectExclusao(); // Atualiza o select de deletar
+        }
+    } catch (error) {
+        alert("Erro na conexão.");
+    }
+}
+
 async function verGastoDoDia() {
     try {
         const response = await fetch(`${API_URL}/relatorios`);
         const logs = await response.json();
         const hoje = new Date().toLocaleDateString('pt-BR');
         
-        // Filtra apenas o que aconteceu na data de hoje
         const gastosHoje = logs.filter(log => log.data === hoje);
         const container = document.getElementById('lista-dia');
         
@@ -139,60 +226,41 @@ async function verGastoDoDia() {
             `).join('')
             : "<p style='color: #64748b;'>Nenhum gasto registrado hoje.</p>";
     } catch (e) {
-        console.error("Erro ao carregar gastos do dia:", e);
+        console.error("Erro ao carregar gastos:", e);
     }
 }
 
-// 3. GRÁFICO DE GASTO SEMANAL (Utilizando Chart.js)
 async function renderizarGrafico() {
     try {
         const response = await fetch(`${API_URL}/relatorios`);
         const logs = await response.json();
 
-        // Totaliza os gastos por item para exibir no gráfico
-        const resumo = { Arroz: 0, Feijão: 0 };
+        const resumo = {};
         logs.forEach(log => {
-            if (resumo[log.item] !== undefined) {
-                resumo[log.item] += Number(log.quantidade);
-            }
+            resumo[log.item] = (resumo[log.item] || 0) + Number(log.quantidade);
         });
 
         const canvas = document.getElementById('graficoGastos');
         if (!canvas) return;
         
         const ctx = canvas.getContext('2d');
-        
-        // Se o gráfico já existir, destrói para criar um novo (evita erros de renderização)
-        if (meuGrafico) {
-            meuGrafico.destroy();
-        }
+        if (meuGrafico) meuGrafico.destroy();
 
-        // @ts-ignore - Chart vem da biblioteca externa CDN
         meuGrafico = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: ['Arroz', 'Feijão'],
+                labels: Object.keys(resumo),
                 datasets: [{
                     label: 'Consumo Acumulado (kg)',
-                    data: [resumo.Arroz, resumo.Feijão],
-                    backgroundColor: ['#2563eb', '#059669'],
-                    borderColor: ['#1d4ed8', '#047857'],
-                    borderWidth: 1,
+                    data: Object.values(resumo),
+                    backgroundColor: '#2563eb',
                     borderRadius: 5
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                scales: {
-                    y: { 
-                        beginAtZero: true,
-                        title: { display: true, text: 'Quilogramas (kg)' }
-                    }
-                },
-                plugins: {
-                    legend: { display: true, position: 'top' }
-                }
+                scales: { y: { beginAtZero: true } }
             }
         });
     } catch (error) {
