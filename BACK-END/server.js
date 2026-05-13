@@ -10,7 +10,7 @@ const pastaFrontEnd = join(__dirname, '..', 'FRONT-END');
 // --- CONFIGURAÇÃO DO BANCO DE DADOS ---
 const db = new Database('escola.db');
 
-// 1. Criação das tabelas
+// 1. Criação das tabelas (Atualizadas)
 db.exec(`
     CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,6 +34,8 @@ db.exec(`
         quantidade REAL,
         data TEXT,
         usuario TEXT,
+        prato TEXT,
+        periodo TEXT,
         timestamp TEXT
     );
 `);
@@ -67,34 +69,62 @@ app.get('/relatorios', (req, res) => {
     res.json(logs);
 });
 
-// --- 4. ROTAS DA COZINHEIRA ---
+// --- 4. ROTAS DA COZINHEIRA (ATUALIZADAS PARA MULTI-ITENS) ---
 
 app.get('/lista-estoque', (req, res) => {
-    // Retorna todos os itens para o diretor, mas você pode filtrar quantidade > 0 para a cozinha no front
-    const itens = db.prepare('SELECT * FROM estoque').all();
+    const itens = db.prepare('SELECT * FROM estoque WHERE quantidade > 0').all();
     res.json(itens);
 });
 
+// NOVA ROTA DE BAIXA: Processa vários itens de uma vez com Transação
 app.post('/baixa', (req, res) => {
-    const { itemNome, quantidade, userId } = req.body;
+    const { prato, periodo, itens, userId } = req.body;
     const user = db.prepare('SELECT nome FROM usuarios WHERE id = ?').get(userId);
-    const item = db.prepare('SELECT * FROM estoque WHERE item = ?').get(itemNome);
 
-    if (!item || item.quantidade < quantidade) {
-        return res.status(400).json({ error: "Estoque insuficiente ou item não encontrado!" });
+    if (!itens || itens.length === 0) {
+        return res.status(400).json({ error: "Nenhum item foi adicionado à lista!" });
     }
 
-    const novaQtd = item.quantidade - Number(quantidade);
-    db.prepare('UPDATE estoque SET quantidade = ? WHERE item = ?').run(novaQtd, itemNome);
-    db.prepare('INSERT INTO consumo_log (item, quantidade, data, usuario, timestamp) VALUES (?, ?, ?, ?, ?)')
-      .run(itemNome, Number(quantidade), new Date().toLocaleDateString('pt-BR'), user.nome, new Date().toISOString());
+    // Iniciamos uma transação para garantir que ou desconta TUDO ou NADA
+    const realizarBaixa = db.transaction((listaDeItens) => {
+        for (const r of listaDeItens) {
+            const estoqueAtual = db.prepare('SELECT quantidade FROM estoque WHERE item = ?').get(r.itemNome);
 
-    res.json({ message: "Baixa registrada com sucesso!", novoEstoque: novaQtd });
+            if (!estoqueAtual || estoqueAtual.quantidade < r.quantidade) {
+                throw new Error(`Estoque insuficiente para o item: ${r.itemNome}`);
+            }
+
+            const novaQtd = estoqueAtual.quantidade - Number(r.quantidade);
+            
+            // 1. Atualiza o estoque
+            db.prepare('UPDATE estoque SET quantidade = ? WHERE item = ?').run(novaQtd, r.itemNome);
+
+            // 2. Registra o log detalhado
+            db.prepare(`
+                INSERT INTO consumo_log (item, quantidade, data, usuario, prato, periodo, timestamp) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(
+                r.itemNome, 
+                Number(r.quantidade), 
+                new Date().toLocaleDateString('pt-BR'), 
+                user.nome, 
+                prato, 
+                periodo, 
+                new Date().toISOString()
+            );
+        }
+    });
+
+    try {
+        realizarBaixa(itens);
+        res.json({ message: "Refeição registrada e estoque atualizado com sucesso!" });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
 });
 
-// --- 5. ROTAS DO DIRETOR (GERENCIAMENTO) ---
+// --- 5. ROTAS DO DIRETOR ---
 
-// Adicionar ou Abastecer
 app.post('/estoque/adicionar', (req, res) => {
     const { item, quantidade, lote, validade } = req.body;
     try {
@@ -113,7 +143,6 @@ app.post('/estoque/adicionar', (req, res) => {
     }
 });
 
-// NOVA FUNÇÃO: Remover item permanentemente
 app.delete('/estoque/:item', (req, res) => {
     const itemNome = req.params.item;
     try {
@@ -126,13 +155,6 @@ app.delete('/estoque/:item', (req, res) => {
     } catch (error) {
         res.status(500).json({ error: "Erro interno ao tentar excluir item." });
     }
-});
-
-// Edição manual de quantidade
-app.put('/estoque', (req, res) => {
-    const { itemNome, novaQuantidade } = req.body;
-    const info = db.prepare('UPDATE estoque SET quantidade = ? WHERE item = ?').run(Number(novaQuantidade), itemNome);
-    info.changes > 0 ? res.json({ message: "Quantidade atualizada!" }) : res.status(404).json({ error: "Item não encontrado." });
 });
 
 app.get('/', (req, res) => res.sendFile(join(pastaFrontEnd, 'index.html')));

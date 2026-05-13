@@ -2,6 +2,7 @@ const API_URL = 'http://localhost:3000';
 let usuarioLogado = null;
 let meuGrafico = null;
 let estoqueLocal = []; 
+let itensParaBaixa = []; // Lista temporária para a cozinha
 
 // --- FUNÇÃO DE AUTENTICAÇÃO ---
 
@@ -37,10 +38,9 @@ async function logar() {
             document.getElementById('diretor-view').classList.remove('hidden');
             document.getElementById('admin-display').innerText = usuarioLogado.nome;
             
-            // Inicializa dados do Diretor
             renderizarGrafico();
             verGastoDoDia();
-            carregarSelectExclusao(); // Carrega a lista para deletar itens
+            carregarSelectExclusao();
         }
 
     } catch (error) {
@@ -48,7 +48,7 @@ async function logar() {
     }
 }
 
-// --- FUNÇÕES DA COZINHEIRA ---
+// --- FUNÇÕES DA COZINHEIRA (ATUALIZADAS) ---
 
 async function carregarSelectCozinha() {
     try {
@@ -58,14 +58,9 @@ async function carregarSelectCozinha() {
         const select = document.getElementById('alimento');
         if (!select) return;
 
-        if (estoqueLocal.length === 0) {
-            select.innerHTML = '<option value="">Nenhum item disponível</option>';
-            return;
-        }
-
-        select.innerHTML = estoqueLocal.map(item => 
-            `<option value="${item.item}">${item.item}</option>`
-        ).join('');
+        select.innerHTML = estoqueLocal.length === 0 
+            ? '<option value="">Nenhum item disponível</option>'
+            : estoqueLocal.map(item => `<option value="${item.item}">${item.item}</option>`).join('');
         
         mostrarInfoExtra();
     } catch (error) {
@@ -78,19 +73,57 @@ function mostrarInfoExtra() {
     const item = estoqueLocal.find(i => i.item === nomeSelecionado);
     
     if (item) {
-        document.getElementById('display-lote').innerText = item.lote || 'N/A';
-        document.getElementById('display-validade').innerText = item.validade || 'N/A';
         document.getElementById('display-atual').innerText = `${item.quantidade} ${item.unidade || 'kg'}`;
     }
 }
 
-async function enviarBaixa() {
+// NOVA FUNÇÃO: Adiciona itens na lista visual antes de enviar ao banco
+function adicionarItemNaLista() {
     const itemNome = document.getElementById('alimento').value;
     const quantidade = document.getElementById('qtd').value;
-    const msgElement = document.getElementById('msg');
 
-    if (!quantidade || quantidade <= 0) {
-        alert("Insira uma quantidade válida.");
+    if (!itemNome || !quantidade || quantidade <= 0) {
+        alert("Selecione o item e a quantidade corretamente.");
+        return;
+    }
+
+    // Verifica se o item já foi adicionado na lista para não duplicar
+    if (itensParaBaixa.some(i => i.itemNome === itemNome)) {
+        alert("Este item já está na lista da refeição.");
+        return;
+    }
+
+    itensParaBaixa.push({ itemNome, quantidade: Number(quantidade) });
+
+    const listaUl = document.getElementById('lista-temporaria-itens');
+    const li = document.createElement('li');
+    li.style = "display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 8px 0; font-size: 0.9rem;";
+    li.innerHTML = `
+        <span>🍴 <b>${itemNome}</b> - ${quantidade}kg/un</span>
+        <button onclick="removerDaListaTemporaria(this, '${itemNome}')" style="background:#ef4444; width:auto; padding:2px 10px; font-size:0.7rem;">Remover</button>
+    `;
+    listaUl.appendChild(li);
+
+    document.getElementById('qtd').value = '';
+}
+
+function removerDaListaTemporaria(btn, nome) {
+    itensParaBaixa = itensParaBaixa.filter(i => i.itemNome !== nome);
+    btn.parentElement.remove();
+}
+
+// NOVA FUNÇÃO: Envia o prato completo com todos os ingredientes
+async function enviarBaixaCompleta() {
+    const prato = document.getElementById('prato-dia').value;
+    const periodo = document.getElementById('periodo-refeicao').value;
+
+    if (!prato) {
+        alert("Por favor, informe o nome do Prato do Dia.");
+        return;
+    }
+
+    if (itensParaBaixa.length === 0) {
+        alert("Adicione pelo menos um alimento à lista.");
         return;
     }
 
@@ -99,8 +132,9 @@ async function enviarBaixa() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                itemNome, 
-                quantidade: Number(quantidade), 
+                prato, 
+                periodo, 
+                itens: itensParaBaixa, 
                 userId: usuarioLogado.id 
             })
         });
@@ -108,11 +142,14 @@ async function enviarBaixa() {
         const data = await response.json();
 
         if (response.ok) {
-            msgElement.innerText = `✅ Baixa confirmada!`;
-            document.getElementById('qtd').value = ''; 
-            await carregarSelectCozinha();
+            alert("✅ Registro concluído: " + data.message);
+            // Limpa os campos
+            itensParaBaixa = [];
+            document.getElementById('lista-temporaria-itens').innerHTML = '';
+            document.getElementById('prato-dia').value = '';
+            carregarSelectCozinha();
         } else {
-            alert(data.error);
+            alert("Erro: " + data.error);
         }
     } catch (error) {
         alert("Erro na conexão com o servidor.");
@@ -121,7 +158,6 @@ async function enviarBaixa() {
 
 // --- FUNÇÕES DO DIRETOR ---
 
-// Função para popular o select de exclusão
 async function carregarSelectExclusao() {
     try {
         const res = await fetch(`${API_URL}/lista-estoque`);
@@ -137,37 +173,20 @@ async function carregarSelectExclusao() {
     }
 }
 
-// NOVA FUNÇÃO: Remover item do banco
 async function removerItemEstoque() {
     const item = document.getElementById('delete-alimento-select').value;
-
-    if (!item) {
-        alert("Selecione um alimento para excluir.");
-        return;
-    }
-
-    if (!confirm(`⚠️ ATENÇÃO: Deseja apagar permanentemente o item "${item}"?`)) {
-        return;
-    }
+    if (!item || !confirm(`⚠️ Deseja apagar permanentemente o item "${item}"?`)) return;
 
     try {
-        const response = await fetch(`${API_URL}/estoque/${item}`, {
-            method: 'DELETE'
-        });
-
-        const data = await response.json();
-
+        const response = await fetch(`${API_URL}/estoque/${item}`, { method: 'DELETE' });
         if (response.ok) {
-            alert(data.message);
-            // Atualiza todas as listas e o gráfico
+            alert("Item removido!");
             carregarSelectExclusao();
             renderizarGrafico();
             verGastoDoDia();
-        } else {
-            alert("Erro: " + data.error);
         }
     } catch (error) {
-        alert("Erro ao conectar com o servidor.");
+        alert("Erro ao conectar.");
     }
 }
 
@@ -190,15 +209,11 @@ async function adicionarNovoEstoque() {
         });
 
         if (response.ok) {
-            alert("✅ Sucesso!");
-            document.getElementById('add-nome').value = '';
-            document.getElementById('add-qtd').value = '';
-            document.getElementById('add-lote').value = '';
-            document.getElementById('add-validade').value = '';
-            
+            alert("✅ Estoque atualizado!");
+            document.querySelectorAll('.form-group input').forEach(i => i.value = '');
             renderizarGrafico();
             verGastoDoDia();
-            carregarSelectExclusao(); // Atualiza o select de deletar
+            carregarSelectExclusao();
         }
     } catch (error) {
         alert("Erro na conexão.");
@@ -218,13 +233,13 @@ async function verGastoDoDia() {
 
         container.innerHTML = gastosHoje.length > 0 
             ? gastosHoje.map(g => `
-                <div style="border-bottom: 1px solid #eee; padding: 8px 0;">
-                    <strong>🕒 ${g.usuario}</strong> retirou 
-                    <span style="color: #e11d48; font-weight: bold;">${g.quantidade}kg</span> 
-                    de <b>${g.item}</b>
+                <div style="border-bottom: 1px solid #eee; padding: 10px 0; font-size: 0.85rem;">
+                    <strong>🍴 ${g.prato} (${g.periodo})</strong><br>
+                    <span style="color: #64748b;">👤 ${g.usuario} retirou</span> 
+                    <b style="color: #e11d48;">${g.quantidade}kg</b> de ${g.item}
                 </div>
             `).join('')
-            : "<p style='color: #64748b;'>Nenhum gasto registrado hoje.</p>";
+            : "<p style='color: #64748b;'>Nenhum gasto hoje.</p>";
     } catch (e) {
         console.error("Erro ao carregar gastos:", e);
     }
@@ -251,7 +266,7 @@ async function renderizarGrafico() {
             data: {
                 labels: Object.keys(resumo),
                 datasets: [{
-                    label: 'Consumo Acumulado (kg)',
+                    label: 'Consumo Total (kg)',
                     data: Object.values(resumo),
                     backgroundColor: '#2563eb',
                     borderRadius: 5
@@ -264,6 +279,6 @@ async function renderizarGrafico() {
             }
         });
     } catch (error) {
-        console.error("Erro ao gerar gráfico:", error);
+        console.error("Erro ao gerar gráfico: ", error);
     }
 }
