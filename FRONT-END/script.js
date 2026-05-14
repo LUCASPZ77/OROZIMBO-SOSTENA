@@ -4,6 +4,34 @@ let meuGrafico = null;
 let estoqueLocal = []; 
 let itensParaBaixa = []; // Lista temporária para a cozinha
 
+// --- FUNÇÃO DE DATA E HORA ---
+
+function atualizarDataVisor() {
+    const agora = new Date();
+    const opcoes = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+    };
+    
+    const dataFormatada = agora.toLocaleDateString('pt-BR', opcoes);
+    const elementoData = document.getElementById('data-atual');
+    
+    if (elementoData) {
+        elementoData.innerText = dataFormatada.charAt(0).toUpperCase() + dataFormatada.slice(1);
+    }
+
+    // Se o diretor estiver logado, atualiza os dados automaticamente
+    if (usuarioLogado && usuarioLogado.cargo === 'Diretor') {
+        verGastoDoDia();
+    }
+}
+
+// Inicializa a data e define o intervalo de atualização
+atualizarDataVisor();
+setInterval(atualizarDataVisor, 3600000);
+
 // --- FUNÇÃO DE AUTENTICAÇÃO ---
 
 async function logar() {
@@ -28,6 +56,7 @@ async function logar() {
         usuarioLogado = await response.json();
         
         document.getElementById('login-view').classList.add('hidden');
+        atualizarDataVisor(); 
         
         if (usuarioLogado.cargo === 'Cozinheira') {
             document.getElementById('cozinha-view').classList.remove('hidden');
@@ -48,7 +77,7 @@ async function logar() {
     }
 }
 
-// --- FUNÇÕES DA COZINHEIRA (ATUALIZADAS) ---
+// --- FUNÇÕES DA COZINHEIRA ---
 
 async function carregarSelectCozinha() {
     try {
@@ -77,7 +106,6 @@ function mostrarInfoExtra() {
     }
 }
 
-// NOVA FUNÇÃO: Adiciona itens na lista visual antes de enviar ao banco
 function adicionarItemNaLista() {
     const itemNome = document.getElementById('alimento').value;
     const quantidade = document.getElementById('qtd').value;
@@ -87,7 +115,6 @@ function adicionarItemNaLista() {
         return;
     }
 
-    // Verifica se o item já foi adicionado na lista para não duplicar
     if (itensParaBaixa.some(i => i.itemNome === itemNome)) {
         alert("Este item já está na lista da refeição.");
         return;
@@ -100,7 +127,7 @@ function adicionarItemNaLista() {
     li.style = "display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 8px 0; font-size: 0.9rem;";
     li.innerHTML = `
         <span>🍴 <b>${itemNome}</b> - ${quantidade}kg/un</span>
-        <button onclick="removerDaListaTemporaria(this, '${itemNome}')" style="background:#ef4444; width:auto; padding:2px 10px; font-size:0.7rem;">Remover</button>
+        <button onclick="removerDaListaTemporaria(this, '${itemNome}')" style="background:#ef4444; color:white; border:none; border-radius:4px; cursor:pointer; padding:2px 10px; font-size:0.7rem;">Remover</button>
     `;
     listaUl.appendChild(li);
 
@@ -112,7 +139,6 @@ function removerDaListaTemporaria(btn, nome) {
     btn.parentElement.remove();
 }
 
-// NOVA FUNÇÃO: Envia o prato completo com todos os ingredientes
 async function enviarBaixaCompleta() {
     const prato = document.getElementById('prato-dia').value;
     const periodo = document.getElementById('periodo-refeicao').value;
@@ -142,8 +168,7 @@ async function enviarBaixaCompleta() {
         const data = await response.json();
 
         if (response.ok) {
-            alert("✅ Registro concluído: " + data.message);
-            // Limpa os campos
+            alert("✅ Registro concluído!");
             itensParaBaixa = [];
             document.getElementById('lista-temporaria-itens').innerHTML = '';
             document.getElementById('prato-dia').value = '';
@@ -180,7 +205,7 @@ async function removerItemEstoque() {
     try {
         const response = await fetch(`${API_URL}/estoque/${item}`, { method: 'DELETE' });
         if (response.ok) {
-            alert("Item removido!");
+            alert("Item removido do sistema!");
             carregarSelectExclusao();
             renderizarGrafico();
             verGastoDoDia();
@@ -210,7 +235,10 @@ async function adicionarNovoEstoque() {
 
         if (response.ok) {
             alert("✅ Estoque atualizado!");
-            document.querySelectorAll('.form-group input').forEach(i => i.value = '');
+            document.getElementById('add-nome').value = '';
+            document.getElementById('add-qtd').value = '';
+            document.getElementById('add-lote').value = '';
+            document.getElementById('add-validade').value = '';
             renderizarGrafico();
             verGastoDoDia();
             carregarSelectExclusao();
@@ -220,28 +248,56 @@ async function adicionarNovoEstoque() {
     }
 }
 
+// FUNÇÃO ATUALIZADA: Exibe a data em cada registro individual
 async function verGastoDoDia() {
     try {
         const response = await fetch(`${API_URL}/relatorios`);
         const logs = await response.json();
-        const hoje = new Date().toLocaleDateString('pt-BR');
-        
-        const gastosHoje = logs.filter(log => log.data === hoje);
         const container = document.getElementById('lista-dia');
         
         if (!container) return;
 
-        container.innerHTML = gastosHoje.length > 0 
-            ? gastosHoje.map(g => `
-                <div style="border-bottom: 1px solid #eee; padding: 10px 0; font-size: 0.85rem;">
-                    <strong>🍴 ${g.prato} (${g.periodo})</strong><br>
-                    <span style="color: #64748b;">👤 ${g.usuario} retirou</span> 
-                    <b style="color: #e11d48;">${g.quantidade}kg</b> de ${g.item}
+        // Ordenar logs para mostrar os mais recentes primeiro
+        logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+        container.innerHTML = logs.length > 0 
+            ? logs.map(g => `
+                <div style="border-bottom: 1px solid #eee; padding: 10px 0; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span style="color: #2563eb; font-size: 0.75rem; font-weight: bold;">📅 ${g.data}</span><br>
+                        <strong>🍴 ${g.prato} (${g.periodo})</strong><br>
+                        <span style="color: #64748b;">👤 ${g.usuario} retirou</span> 
+                        <b style="color: #e11d48;">${g.quantidade}kg</b> de ${g.item}
+                    </div>
+                    <button onclick="removerPratoRelatorio('${g.timestamp}')" 
+                            style="background: none; border: none; cursor: pointer; color: #dc2626; font-size: 1.1rem;" 
+                            title="Remover este registro">
+                        🗑️
+                    </button>
                 </div>
             `).join('')
-            : "<p style='color: #64748b;'>Nenhum gasto hoje.</p>";
+            : "<p style='color: #64748b;'>Nenhum histórico disponível.</p>";
     } catch (e) {
         console.error("Erro ao carregar gastos:", e);
+    }
+}
+
+async function removerPratoRelatorio(timestamp) {
+    if (!confirm("Deseja remover este registro do histórico de atividades?")) return;
+
+    try {
+        const response = await fetch(`${API_URL}/relatorios/${timestamp}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            verGastoDoDia(); 
+            renderizarGrafico(); 
+        } else {
+            alert("Erro ao remover o registro.");
+        }
+    } catch (error) {
+        alert("Erro de conexão com o servidor.");
     }
 }
 

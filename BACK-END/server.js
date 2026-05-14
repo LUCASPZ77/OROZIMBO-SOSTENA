@@ -10,7 +10,7 @@ const pastaFrontEnd = join(__dirname, '..', 'FRONT-END');
 // --- CONFIGURAÇÃO DO BANCO DE DADOS ---
 const db = new Database('escola.db');
 
-// 1. Criação das tabelas (Atualizadas)
+// 1. Criação das tabelas (Com as novas colunas prato e periodo)
 db.exec(`
     CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,14 +69,28 @@ app.get('/relatorios', (req, res) => {
     res.json(logs);
 });
 
-// --- 4. ROTAS DA COZINHEIRA (ATUALIZADAS PARA MULTI-ITENS) ---
+// NOVA ROTA: Remover um item específico do relatório (A lixeira)
+app.delete('/relatorios/:timestamp', (req, res) => {
+    const { timestamp } = req.params;
+    try {
+        const resultado = db.prepare('DELETE FROM consumo_log WHERE timestamp = ?').run(timestamp);
+        if (resultado.changes > 0) {
+            res.json({ message: "Registro removido do relatório." });
+        } else {
+            res.status(404).json({ error: "Registro não encontrado." });
+        }
+    } catch (error) {
+        res.status(500).json({ error: "Erro ao excluir registro." });
+    }
+});
+
+// --- 4. ROTAS DA COZINHEIRA (BAIXA COM TRANSAÇÃO) ---
 
 app.get('/lista-estoque', (req, res) => {
     const itens = db.prepare('SELECT * FROM estoque WHERE quantidade > 0').all();
     res.json(itens);
 });
 
-// NOVA ROTA DE BAIXA: Processa vários itens de uma vez com Transação
 app.post('/baixa', (req, res) => {
     const { prato, periodo, itens, userId } = req.body;
     const user = db.prepare('SELECT nome FROM usuarios WHERE id = ?').get(userId);
@@ -85,7 +99,7 @@ app.post('/baixa', (req, res) => {
         return res.status(400).json({ error: "Nenhum item foi adicionado à lista!" });
     }
 
-    // Iniciamos uma transação para garantir que ou desconta TUDO ou NADA
+    // Transação: Tudo ou nada. Se um item falhar, nada é descontado.
     const realizarBaixa = db.transaction((listaDeItens) => {
         for (const r of listaDeItens) {
             const estoqueAtual = db.prepare('SELECT quantidade FROM estoque WHERE item = ?').get(r.itemNome);

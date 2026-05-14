@@ -76,7 +76,7 @@
             <div style="margin-top: 20px;">
                 <p style="font-size: 0.9rem; font-weight: bold; color: #1e293b;">Itens da Refeição:</p>
                 <ul id="lista-temporaria-itens" style="background: white; border: 1px solid #ddd; padding: 10px; border-radius: 6px; min-height: 50px; list-style: none; margin-bottom: 20px;">
-                    </ul>
+                </ul>
             </div>
 
             <button id="btn-finalizar" onclick="enviarBaixaCompleta()" style="background: #059669; font-size: 1.1rem; height: 50px;">
@@ -88,9 +88,15 @@
     </div>
 
     <div id="diretor-view" class="box hidden" style="max-width: 850px; width: 95%;">
-        <header>
-            <h2>PAINEL DO DIRETOR</h2>
-            <p>Bem-vindo, <span id="admin-display"></span></p>
+        <header style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #e2e8f0; padding-bottom: 15px; margin-bottom: 20px;">
+            <div>
+                <h2 style="margin: 0;">PAINEL DO DIRETOR</h2>
+                <p style="margin: 5px 0 0 0;">Bem-vindo, <span id="admin-display"></span></p>
+            </div>
+
+            <div id="data-atual" style="font-weight: bold; color: #1e293b; padding: 8px 15px; background: #f1f5f9; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.85rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                Carregando data...
+            </div>
         </header>
     
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
@@ -126,10 +132,10 @@
 
         <div style="margin-top: 20px; border: 1px solid #ddd; padding: 20px; border-radius: 12px; background: white;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h4 style="margin: 0; color: #2563eb;">🕒 Atividade de Hoje</h4>
+                <h4 style="margin: 0; color: #2563eb;">🕒 Histórico de Atividades</h4>
                 <button onclick="verGastoDoDia()" style="background: #64748b; width: auto; padding: 6px 15px;">Atualizar</button>
             </div>
-            <div id="lista-dia" style="font-size: 0.85rem; max-height: 200px; overflow-y: auto; padding: 10px; background: #fcfcfc; border: 1px solid #eee; border-radius: 6px;">
+            <div id="lista-dia" style="font-size: 0.85rem; max-height: 300px; overflow-y: auto; padding: 10px; background: #fcfcfc; border: 1px solid #eee; border-radius: 6px;">
                 <p style="color: #94a3b8;">Clique em atualizar para ver as atividades...</p>
             </div>
         </div>
