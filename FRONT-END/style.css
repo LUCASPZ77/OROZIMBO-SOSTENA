@@ -4,7 +4,9 @@
     --bg: #f8fafc;
     --text: #1e293b;
     --success: #059669;
+    --danger: #ef4444;
     --border: #e2e8f0;
+    --sidebar-width: 280px;
 }
 
 body {
@@ -16,97 +18,212 @@ body {
     align-items: center;
     min-height: 100vh;
     margin: 0;
+    transition: filter 0.3s ease;
 }
 
+/* --- MENU LATERAL (SIDEBAR) --- */
+.sidebar {
+    height: 100%;
+    width: 0; 
+    position: fixed;
+    z-index: 2000;
+    top: 0;
+    left: 0;
+    background-color: white;
+    overflow-x: hidden;
+    transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 5px 0 15px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar.open {
+    width: var(--sidebar-width);
+}
+
+.sidebar-header {
+    padding: 30px 20px;
+    background: var(--primary);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between; /* Ajustado para separar avatar do botão fechar */
+    position: relative;
+}
+
+.user-avatar {
+    font-size: 1.8rem;
+    background: rgba(255, 255, 255, 0.2);
+    width: 45px;
+    height: 45px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.user-info {
+    flex-grow: 1;
+    margin-left: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+#profile-name {
+    font-weight: bold;
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+}
+
+#profile-role {
+    font-size: 0.75rem;
+    opacity: 0.9;
+}
+
+/* BOTÃO FECHAR (X) DENTRO DO MENU */
+.close-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.close-btn:hover {
+    background: var(--danger);
+}
+
+/* BOTÃO DAS 3 BARRINHAS (MENU TOGGLE) */
+.menu-toggle {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    width: 45px;
+    height: 45px;
+    border-radius: 10px;
+    cursor: pointer;
+    z-index: 1500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);
+    transition: all 0.3s ease;
+}
+
+.menu-toggle:hover {
+    background: var(--primary-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(37, 99, 235, 0.4);
+}
+
+/* --- ESTRUTURA DAS CAIXAS --- */
 .box {
     background: white;
     padding: 2.5rem;
-    border-radius: 12px;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    border-radius: 16px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
     width: 100%;
     max-width: 400px;
+    text-align: center;
+    margin: 20px;
 }
 
-header h2 {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.5rem;
-    color: var(--primary);
-}
-
-header p {
-    margin: 0 0 2rem 0;
-    font-size: 0.875rem;
-    color: #64748b;
-}
-
-.form-group label {
-    display: block;
-    font-size: 0.875rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-    text-align: left;
+/* Ajuste para telas maiores (Diretor) */
+#diretor-view {
+    max-width: 900px;
+    padding-top: 3rem; /* Espaço para não bater no botão do menu */
 }
 
 input, select {
     width: 100%;
-    padding: 0.75rem;
-    margin-bottom: 1.25rem;
+    padding: 0.8rem;
+    margin-bottom: 1rem;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 10px;
     box-sizing: border-box;
     font-size: 1rem;
+    background-color: #fcfcfc;
+    transition: border 0.2s;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: var(--primary);
+    background-color: white;
+}
+
+/* Estilo para o campo de Token */
+#token-acesso {
+    border: 2px solid #dbeafe; /* Azul clarinho para destacar */
+    font-weight: bold;
+    letter-spacing: 2px;
 }
 
 button {
     width: 100%;
-    padding: 0.75rem;
+    padding: 0.8rem;
     background-color: var(--primary);
     color: white;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     font-size: 1rem;
-    font-weight: bold;
+    font-weight: 600;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.2s;
 }
 
 button:hover {
     background-color: var(--primary-dark);
+    filter: brightness(1.1);
 }
 
-.btn-secondary {
-    background-color: #64748b;
-    margin-top: 1rem;
+.sidebar-menu {
+    padding: 10px 20px;
 }
 
-.btn-secondary:hover {
-    background-color: #475569;
-}
-
-.hidden {
-    display: none;
-}
-
-.success-msg {
-    color: var(--success);
-    font-weight: bold;
-    margin: 1rem 0;
-}
-
-/* Adicione ao seu style.css */
-.terms-container {
+.sidebar-menu a {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 15px;
-    font-size: 0.85rem;
+    padding: 14px 0;
+    text-decoration: none;
+    color: var(--text);
+    border-bottom: 1px solid #f8fafc;
+    font-weight: 500;
 }
 
-.terms-container input {
-    width: auto;
-    margin: 0;
+.menu-divider {
+    height: 1px;
+    background: #f1f5f9;
+    margin: 15px 0;
 }
 
 .hidden {
     display: none !important;
+}
+
+/* --- RESPONSIVIDADE --- */
+@media (max-width: 600px) {
+    .box {
+        padding: 1.5rem;
+        margin: 10px;
+    }
+    
+    #diretor-view {
+        grid-template-columns: 1fr !important; /* Força os cards do diretor a ficarem em uma coluna no celular */
+    }
 }

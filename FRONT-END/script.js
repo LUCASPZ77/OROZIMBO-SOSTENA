@@ -22,21 +22,41 @@ function atualizarDataVisor() {
         elementoData.innerText = dataFormatada.charAt(0).toUpperCase() + dataFormatada.slice(1);
     }
 
-    // Se o diretor estiver logado, atualiza os dados automaticamente
     if (usuarioLogado && usuarioLogado.cargo === 'Diretor') {
         verGastoDoDia();
     }
 }
 
-// Inicializa a data e define o intervalo de atualização
 atualizarDataVisor();
 setInterval(atualizarDataVisor, 3600000);
 
-// --- FUNÇÃO DE AUTENTICAÇÃO ---
+// --- FUNÇÕES DE INTERFACE (MENU E PERFIL) ---
+
+function toggleMenu() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.classList.toggle('open');
+}
+
+function ajustarBrilho(valor) {
+    document.body.style.filter = `brightness(${valor}%)`;
+}
+
+function logout() {
+    if (confirm("Deseja realmente sair do sistema?")) {
+        localStorage.removeItem('usuarioMemorizado');
+        location.reload();
+    }
+}
+
+// --- FUNÇÃO DE AUTENTICAÇÃO COM TOKEN ---
 
 async function logar() {
-    const email = document.getElementById('email').value;
     const cargo = document.getElementById('cargo').value;
+    const nome = document.getElementById('nome').value;
+    const sobrenome = document.getElementById('sobrenome').value;
+    const email = document.getElementById('email').value;
+    const cpf = document.getElementById('cpf').value;
+    const token = document.getElementById('token-acesso').value;
     const termos = document.getElementById('termos').checked;
 
     if (!termos) {
@@ -44,17 +64,46 @@ async function logar() {
         return;
     }
 
+    if (!nome || !email || !token || !cpf) {
+        alert("Por favor, preencha todos os campos e insira o Token do seu cargo.");
+        return;
+    }
+
     try {
         const response = await fetch(`${API_URL}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, cargo })
+            body: JSON.stringify({ 
+                email, 
+                cargo, 
+                token, 
+                nome, 
+                sobrenome, 
+                cpf 
+            })
         });
 
-        if (!response.ok) throw new Error("Acesso negado. Verifique suas credenciais.");
+        const data = await response.json();
 
-        usuarioLogado = await response.json();
+        if (!response.ok) throw new Error(data.error || "Acesso negado.");
+
+        usuarioLogado = data;
         
+        // MEMORIZAR DADOS PARA O PERFIL NA SIDEBAR
+        const dadosPerfil = {
+            nome: usuarioLogado.nome,
+            sobrenome: usuarioLogado.sobrenome,
+            cargo: usuarioLogado.cargo,
+            email: usuarioLogado.email
+        };
+        localStorage.setItem('usuarioMemorizado', JSON.stringify(dadosPerfil));
+
+        // ATUALIZAR INTERFACE DA SIDEBAR
+        document.getElementById('profile-name').innerText = `${usuarioLogado.nome} ${usuarioLogado.sobrenome}`;
+        document.getElementById('profile-role').innerText = usuarioLogado.cargo;
+        document.getElementById('menu-toggle').classList.remove('hidden');
+
+        // TROCAR TELAS
         document.getElementById('login-view').classList.add('hidden');
         atualizarDataVisor(); 
         
@@ -73,7 +122,7 @@ async function logar() {
         }
 
     } catch (error) {
-        alert("Erro: " + error.message);
+        alert("Erro na Autenticação: " + error.message);
     }
 }
 
@@ -83,7 +132,6 @@ async function carregarSelectCozinha() {
     try {
         const res = await fetch(`${API_URL}/lista-estoque`);
         estoqueLocal = await res.json();
-        
         const select = document.getElementById('alimento');
         if (!select) return;
 
@@ -100,9 +148,8 @@ async function carregarSelectCozinha() {
 function mostrarInfoExtra() {
     const nomeSelecionado = document.getElementById('alimento').value;
     const item = estoqueLocal.find(i => i.item === nomeSelecionado);
-    
     if (item) {
-        document.getElementById('display-atual').innerText = `${item.quantidade} ${item.unidade || 'kg'}`;
+        document.getElementById('display-atual').innerText = `${item.quantidade} kg`;
     }
 }
 
@@ -116,7 +163,7 @@ function adicionarItemNaLista() {
     }
 
     if (itensParaBaixa.some(i => i.itemNome === itemNome)) {
-        alert("Este item já está na lista da refeição.");
+        alert("Este item já está na lista.");
         return;
     }
 
@@ -126,11 +173,10 @@ function adicionarItemNaLista() {
     const li = document.createElement('li');
     li.style = "display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 8px 0; font-size: 0.9rem;";
     li.innerHTML = `
-        <span>🍴 <b>${itemNome}</b> - ${quantidade}kg/un</span>
+        <span>🍴 <b>${itemNome}</b> - ${quantidade}kg</span>
         <button onclick="removerDaListaTemporaria(this, '${itemNome}')" style="background:#ef4444; color:white; border:none; border-radius:4px; cursor:pointer; padding:2px 10px; font-size:0.7rem;">Remover</button>
     `;
     listaUl.appendChild(li);
-
     document.getElementById('qtd').value = '';
 }
 
@@ -142,6 +188,7 @@ function removerDaListaTemporaria(btn, nome) {
 async function enviarBaixaCompleta() {
     const prato = document.getElementById('prato-dia').value;
     const periodo = document.getElementById('periodo-refeicao').value;
+    const perfil = JSON.parse(localStorage.getItem('usuarioMemorizado'));
 
     if (!prato) {
         alert("Por favor, informe o nome do Prato do Dia.");
@@ -149,7 +196,7 @@ async function enviarBaixaCompleta() {
     }
 
     if (itensParaBaixa.length === 0) {
-        alert("Adicione pelo menos um alimento à lista.");
+        alert("Adicione pelo menos um alimento.");
         return;
     }
 
@@ -161,19 +208,18 @@ async function enviarBaixaCompleta() {
                 prato, 
                 periodo, 
                 itens: itensParaBaixa, 
-                userId: usuarioLogado.id 
+                usuarioNome: perfil.nome 
             })
         });
 
-        const data = await response.json();
-
         if (response.ok) {
-            alert("✅ Registro concluído!");
+            alert("✅ Registro concluído com sucesso!");
             itensParaBaixa = [];
             document.getElementById('lista-temporaria-itens').innerHTML = '';
             document.getElementById('prato-dia').value = '';
             carregarSelectCozinha();
         } else {
+            const data = await response.json();
             alert("Erro: " + data.error);
         }
     } catch (error) {
@@ -188,7 +234,6 @@ async function carregarSelectExclusao() {
         const res = await fetch(`${API_URL}/lista-estoque`);
         const itens = await res.json();
         const select = document.getElementById('delete-alimento-select');
-        
         if (select) {
             select.innerHTML = '<option value="">Selecione para excluir...</option>' + 
                 itens.map(i => `<option value="${i.item}">${i.item}</option>`).join('');
@@ -205,7 +250,7 @@ async function removerItemEstoque() {
     try {
         const response = await fetch(`${API_URL}/estoque/${item}`, { method: 'DELETE' });
         if (response.ok) {
-            alert("Item removido do sistema!");
+            alert("Item removido!");
             carregarSelectExclusao();
             renderizarGrafico();
             verGastoDoDia();
@@ -248,16 +293,13 @@ async function adicionarNovoEstoque() {
     }
 }
 
-// FUNÇÃO ATUALIZADA: Exibe a data em cada registro individual
 async function verGastoDoDia() {
     try {
         const response = await fetch(`${API_URL}/relatorios`);
         const logs = await response.json();
         const container = document.getElementById('lista-dia');
-        
         if (!container) return;
 
-        // Ordenar logs para mostrar os mais recentes primeiro
         logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
         container.innerHTML = logs.length > 0 
@@ -269,11 +311,7 @@ async function verGastoDoDia() {
                         <span style="color: #64748b;">👤 ${g.usuario} retirou</span> 
                         <b style="color: #e11d48;">${g.quantidade}kg</b> de ${g.item}
                     </div>
-                    <button onclick="removerPratoRelatorio('${g.timestamp}')" 
-                            style="background: none; border: none; cursor: pointer; color: #dc2626; font-size: 1.1rem;" 
-                            title="Remover este registro">
-                        🗑️
-                    </button>
+                    <button onclick="removerPratoRelatorio('${g.timestamp}')" style="background: none; border: none; cursor: pointer; color: #dc2626; font-size: 1.1rem;">🗑️</button>
                 </div>
             `).join('')
             : "<p style='color: #64748b;'>Nenhum histórico disponível.</p>";
@@ -283,21 +321,15 @@ async function verGastoDoDia() {
 }
 
 async function removerPratoRelatorio(timestamp) {
-    if (!confirm("Deseja remover este registro do histórico de atividades?")) return;
-
+    if (!confirm("Deseja remover este registro?")) return;
     try {
-        const response = await fetch(`${API_URL}/relatorios/${timestamp}`, {
-            method: 'DELETE'
-        });
-
+        const response = await fetch(`${API_URL}/relatorios/${timestamp}`, { method: 'DELETE' });
         if (response.ok) {
             verGastoDoDia(); 
             renderizarGrafico(); 
-        } else {
-            alert("Erro ao remover o registro.");
         }
     } catch (error) {
-        alert("Erro de conexão com o servidor.");
+        alert("Erro de conexão.");
     }
 }
 
@@ -305,7 +337,6 @@ async function renderizarGrafico() {
     try {
         const response = await fetch(`${API_URL}/relatorios`);
         const logs = await response.json();
-
         const resumo = {};
         logs.forEach(log => {
             resumo[log.item] = (resumo[log.item] || 0) + Number(log.quantidade);
@@ -313,7 +344,6 @@ async function renderizarGrafico() {
 
         const canvas = document.getElementById('graficoGastos');
         if (!canvas) return;
-        
         const ctx = canvas.getContext('2d');
         if (meuGrafico) meuGrafico.destroy();
 
@@ -335,6 +365,6 @@ async function renderizarGrafico() {
             }
         });
     } catch (error) {
-        console.error("Erro ao gerar gráfico: ", error);
+        console.error("Erro ao gerar gráfico");
     }
 }

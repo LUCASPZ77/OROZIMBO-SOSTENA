@@ -7,15 +7,16 @@ import Database from 'better-sqlite3';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pastaFrontEnd = join(__dirname, '..', 'FRONT-END');
 
-// --- CONFIGURAÇÃO DO BANCO DE DADOS ---
 const db = new Database('escola.db');
 
-// 1. Criação das tabelas (Com as novas colunas prato e periodo)
+// --- 1. CONFIGURAÇÃO DO BANCO DE DADOS ---
 db.exec(`
     CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nome TEXT,
+        sobrenome TEXT,
         email TEXT UNIQUE,
+        cpf TEXT UNIQUE,
         cargo TEXT
     );
 
@@ -40,51 +41,70 @@ db.exec(`
     );
 `);
 
-// 2. Popular dados iniciais
-const checkUsers = db.prepare('SELECT count(*) as count FROM usuarios').get();
-if (checkUsers.count === 0) {
-    db.prepare('INSERT INTO usuarios (nome, email, cargo) VALUES (?, ?, ?)').run('Admin', 'diretor@escola.com', 'Diretor');
-    db.prepare('INSERT INTO usuarios (nome, email, cargo) VALUES (?, ?, ?)').run('Maria', 'cozinha@escola.com', 'Cozinheira');
-    
-    db.prepare('INSERT INTO estoque (item, quantidade, lote, validade) VALUES (?, ?, ?, ?)').run('Arroz', 50, 'ABC-123', '2026-12-01');
-    db.prepare('INSERT INTO estoque (item, quantidade, lote, validade) VALUES (?, ?, ?, ?)').run('Feijão', 30, 'XYZ-987', '2026-11-15');
-    console.log("🌱 Banco inicializado com sucesso.");
-}
+// --- 2. DEFINIÇÃO DOS TOKENS DE ACESSO (CHAVES MESTRAS) ---
+const TOKENS_MESTRES = {
+    'Diretor': 'DIR-2026-MASTER',   // Código para Diretores
+    'Cozinheira': 'COZ-2026-SCHOOL' // Código para Cozinheiras
+};
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 app.use(express.static(pastaFrontEnd));
 
-// --- 3. ROTAS DE AUTENTICAÇÃO E RELATÓRIO ---
+// --- 3. ROTAS DE AUTENTICAÇÃO COM TOKEN ---
 
 app.post('/login', (req, res) => {
-    const { email, cargo } = req.body;
-    const user = db.prepare('SELECT * FROM usuarios WHERE email = ? AND cargo = ?').get(email, cargo);
-    user ? res.json(user) : res.status(401).json({ error: "Credenciais inválidas." });
+    const { email, cargo, token, nome, sobrenome, cpf } = req.body;
+
+    // A. VALIDAR TOKEN DE ACESSO PRIMEIRO
+    if (token !== TOKENS_MESTRES[cargo]) {
+        return res.status(401).json({ error: "Token de segurança inválido para este cargo!" });
+    }
+
+    try {
+        // B. Tenta encontrar o usuário pelo e-mail
+        let user = db.prepare('SELECT * FROM usuarios WHERE email = ?').get(email);
+
+        // C. Se o usuário não existe, nós o criamos (Cadastro Automático com Token)
+        if (!user) {
+            const insert = db.prepare(`
+                INSERT INTO usuarios (nome, sobrenome, email, cpf, cargo) 
+                VALUES (?, ?, ?, ?, ?)
+            `).run(nome, sobrenome, email, cpf, cargo);
+            
+            user = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(insert.lastInsertRowid);
+            console.log(`🆕 Novo usuário cadastrado via token: ${nome}`);
+        }
+
+        // D. Retorna o usuário logado
+        res.json(user);
+
+    } catch (error) {
+        res.status(500).json({ error: "Erro ao processar login/cadastro: " + error.message });
+    }
 });
+
+// --- 4. RELATÓRIOS E HISTÓRICO ---
 
 app.get('/relatorios', (req, res) => {
     const logs = db.prepare('SELECT * FROM consumo_log ORDER BY id DESC').all();
     res.json(logs);
 });
 
-// NOVA ROTA: Remover um item específico do relatório (A lixeira)
 app.delete('/relatorios/:timestamp', (req, res) => {
     const { timestamp } = req.params;
     try {
         const resultado = db.prepare('DELETE FROM consumo_log WHERE timestamp = ?').run(timestamp);
-        if (resultado.changes > 0) {
-            res.json({ message: "Registro removido do relatório." });
-        } else {
-            res.status(404).json({ error: "Registro não encontrado." });
-        }
+        resultado.changes > 0 
+            ? res.json({ message: "Registro removido." }) 
+            : res.status(404).json({ error: "Não encontrado." });
     } catch (error) {
-        res.status(500).json({ error: "Erro ao excluir registro." });
+        res.status(500).json({ error: "Erro ao excluir." });
     }
 });
 
-// --- 4. ROTAS DA COZINHEIRA (BAIXA COM TRANSAÇÃO) ---
+// --- 5. OPERAÇÕES DA COZINHA (ESTOQUE) ---
 
 app.get('/lista-estoque', (req, res) => {
     const itens = db.prepare('SELECT * FROM estoque WHERE quantidade > 0').all();
@@ -92,28 +112,23 @@ app.get('/lista-estoque', (req, res) => {
 });
 
 app.post('/baixa', (req, res) => {
-    const { prato, periodo, itens, userId } = req.body;
-    const user = db.prepare('SELECT nome FROM usuarios WHERE id = ?').get(userId);
+    const { prato, periodo, itens, usuarioNome } = req.body;
 
     if (!itens || itens.length === 0) {
-        return res.status(400).json({ error: "Nenhum item foi adicionado à lista!" });
+        return res.status(400).json({ error: "Lista de itens vazia!" });
     }
 
-    // Transação: Tudo ou nada. Se um item falhar, nada é descontado.
-    const realizarBaixa = db.transaction((listaDeItens) => {
-        for (const r of listaDeItens) {
+    const realizarBaixa = db.transaction((lista) => {
+        for (const r of lista) {
             const estoqueAtual = db.prepare('SELECT quantidade FROM estoque WHERE item = ?').get(r.itemNome);
 
             if (!estoqueAtual || estoqueAtual.quantidade < r.quantidade) {
-                throw new Error(`Estoque insuficiente para o item: ${r.itemNome}`);
+                throw new Error(`Estoque insuficiente: ${r.itemNome}`);
             }
 
             const novaQtd = estoqueAtual.quantidade - Number(r.quantidade);
-            
-            // 1. Atualiza o estoque
             db.prepare('UPDATE estoque SET quantidade = ? WHERE item = ?').run(novaQtd, r.itemNome);
 
-            // 2. Registra o log detalhado
             db.prepare(`
                 INSERT INTO consumo_log (item, quantidade, data, usuario, prato, periodo, timestamp) 
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -121,7 +136,7 @@ app.post('/baixa', (req, res) => {
                 r.itemNome, 
                 Number(r.quantidade), 
                 new Date().toLocaleDateString('pt-BR'), 
-                user.nome, 
+                usuarioNome, 
                 prato, 
                 periodo, 
                 new Date().toISOString()
@@ -131,13 +146,13 @@ app.post('/baixa', (req, res) => {
 
     try {
         realizarBaixa(itens);
-        res.json({ message: "Refeição registrada e estoque atualizado com sucesso!" });
+        res.json({ message: "Estoque atualizado com sucesso!" });
     } catch (error) {
         res.status(400).json({ error: error.message });
     }
 });
 
-// --- 5. ROTAS DO DIRETOR ---
+// --- 6. OPERAÇÕES DO DIRETOR ---
 
 app.post('/estoque/adicionar', (req, res) => {
     const { item, quantidade, lote, validade } = req.body;
@@ -146,34 +161,26 @@ app.post('/estoque/adicionar', (req, res) => {
         if (itemExistente) {
             db.prepare('UPDATE estoque SET quantidade = quantidade + ?, lote = ?, validade = ? WHERE item = ?')
               .run(Number(quantidade), lote, validade, item);
-            res.json({ message: "Estoque abastecido com sucesso!" });
         } else {
             db.prepare('INSERT INTO estoque (item, quantidade, lote, validade) VALUES (?, ?, ?, ?)')
               .run(item, Number(quantidade), lote, validade);
-            res.json({ message: "Novo alimento cadastrado com sucesso!" });
         }
+        res.json({ message: "Estoque atualizado!" });
     } catch (error) {
-        res.status(500).json({ error: "Erro ao processar entrada." });
+        res.status(500).json({ error: "Erro ao adicionar." });
     }
 });
 
 app.delete('/estoque/:item', (req, res) => {
-    const itemNome = req.params.item;
     try {
-        const resultado = db.prepare('DELETE FROM estoque WHERE item = ?').run(itemNome);
-        if (resultado.changes > 0) {
-            res.json({ message: `O item "${itemNome}" foi removido do sistema.` });
-        } else {
-            res.status(404).json({ error: "Item não encontrado para exclusão." });
-        }
+        db.prepare('DELETE FROM estoque WHERE item = ?').run(req.params.item);
+        res.json({ message: "Item removido." });
     } catch (error) {
-        res.status(500).json({ error: "Erro interno ao tentar excluir item." });
+        res.status(500).json({ error: "Erro ao excluir." });
     }
 });
 
 app.get('/', (req, res) => res.sendFile(join(pastaFrontEnd, 'index.html')));
 
 const PORT = 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Servidor rodando em http://localhost:${PORT}`));
