@@ -41,10 +41,9 @@ db.exec(`
     );
 `);
 
-// --- 2. DEFINIÇÃO DOS TOKENS DE ACESSO (CHAVES MESTRAS) ---
 const TOKENS_MESTRES = {
-    'Diretor': 'DIR-2026-MASTER',   // Código para Diretores
-    'Cozinheira': 'COZ-2026-SCHOOL' // Código para Cozinheiras
+    'Diretor': 'DIR-2026-MASTER',
+    'Cozinheira': 'COZ-2026-SCHOOL'
 };
 
 const app = express();
@@ -52,44 +51,60 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static(pastaFrontEnd));
 
-// --- 3. ROTAS DE AUTENTICAÇÃO COM TOKEN ---
+// --- 3. ROTAS DE USUÁRIOS ---
 
-app.post('/login', (req, res) => {
-    const { email, cargo, token, nome, sobrenome, cpf } = req.body;
-
-    // A. VALIDAR TOKEN DE ACESSO PRIMEIRO
-    if (token !== TOKENS_MESTRES[cargo]) {
-        return res.status(401).json({ error: "Token de segurança inválido para este cargo!" });
-    }
-
+app.post('/usuarios/registrar', (req, res) => {
+    const { nome, sobrenome, email, cpf, cargo } = req.body;
     try {
-        // B. Tenta encontrar o usuário pelo e-mail
-        let user = db.prepare('SELECT * FROM usuarios WHERE email = ?').get(email);
-
-        // C. Se o usuário não existe, nós o criamos (Cadastro Automático com Token)
-        if (!user) {
-            const insert = db.prepare(`
-                INSERT INTO usuarios (nome, sobrenome, email, cpf, cargo) 
-                VALUES (?, ?, ?, ?, ?)
-            `).run(nome, sobrenome, email, cpf, cargo);
-            
-            user = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(insert.lastInsertRowid);
-            console.log(`🆕 Novo usuário cadastrado via token: ${nome}`);
-        }
-
-        // D. Retorna o usuário logado
-        res.json(user);
-
+        const insert = db.prepare(`
+            INSERT INTO usuarios (nome, sobrenome, email, cpf, cargo) 
+            VALUES (?, ?, ?, ?, ?)
+        `).run(nome, sobrenome, email, cpf, cargo);
+        res.json({ message: "Usuário cadastrado com sucesso!", id: insert.lastInsertRowid });
     } catch (error) {
-        res.status(500).json({ error: "Erro ao processar login/cadastro: " + error.message });
+        if (error.message.includes('UNIQUE constraint failed')) {
+            res.status(400).json({ error: "Este CPF ou E-mail já está cadastrado." });
+        } else {
+            res.status(500).json({ error: "Erro no servidor: " + error.message });
+        }
     }
 });
 
-// --- 4. RELATÓRIOS E HISTÓRICO ---
+app.post('/login', (req, res) => {
+    const { cpf, token } = req.body;
+    try {
+        const user = db.prepare('SELECT * FROM usuarios WHERE cpf = ?').get(cpf);
+        if (!user) return res.status(404).json({ error: "Usuário não encontrado." });
+        const tokenCorreto = TOKENS_MESTRES[user.cargo];
+        if (token !== tokenCorreto) return res.status(401).json({ error: "Token inválido!" });
+        res.json(user);
+    } catch (error) {
+        res.status(500).json({ error: "Erro ao processar login." });
+    }
+});
 
+// --- 4. RELATÓRIOS, HISTÓRICO E NOVA FUNÇÃO DE FILTRO ---
+
+// ROTA ATUALIZADA: Pega tudo por padrão
 app.get('/relatorios', (req, res) => {
     const logs = db.prepare('SELECT * FROM consumo_log ORDER BY id DESC').all();
     res.json(logs);
+});
+
+// >>> NOVA FUNÇÃO: Rota para filtrar por data (Semana, Mês ou Dia) <<<
+app.get('/relatorios/filtro', (req, res) => {
+    const { inicio, fim } = req.query; 
+    try {
+        // Busca logs que estão entre a data de início e fim
+        const logs = db.prepare(`
+            SELECT * FROM consumo_log 
+            WHERE data BETWEEN ? AND ? 
+            ORDER BY id DESC
+        `).all(inicio, fim);
+        res.json(logs);
+    } catch (error) {
+        res.status(500).json({ error: "Erro ao filtrar histórico." });
+    }
 });
 
 app.delete('/relatorios/:timestamp', (req, res) => {
@@ -113,19 +128,17 @@ app.get('/lista-estoque', (req, res) => {
 
 app.post('/baixa', (req, res) => {
     const { prato, periodo, itens, usuarioNome } = req.body;
+    if (!itens || itens.length === 0) return res.status(400).json({ error: "Lista vazia!" });
 
-    if (!itens || itens.length === 0) {
-        return res.status(400).json({ error: "Lista de itens vazia!" });
-    }
+    // Pegamos a data atual no formato YYYY-MM-DD para o filtro funcionar 100%
+    const dataHoje = new Date().toISOString().split('T')[0];
 
     const realizarBaixa = db.transaction((lista) => {
         for (const r of lista) {
             const estoqueAtual = db.prepare('SELECT quantidade FROM estoque WHERE item = ?').get(r.itemNome);
-
             if (!estoqueAtual || estoqueAtual.quantidade < r.quantidade) {
                 throw new Error(`Estoque insuficiente: ${r.itemNome}`);
             }
-
             const novaQtd = estoqueAtual.quantidade - Number(r.quantidade);
             db.prepare('UPDATE estoque SET quantidade = ? WHERE item = ?').run(novaQtd, r.itemNome);
 
@@ -135,7 +148,7 @@ app.post('/baixa', (req, res) => {
             `).run(
                 r.itemNome, 
                 Number(r.quantidade), 
-                new Date().toLocaleDateString('pt-BR'), 
+                dataHoje, // Gravando YYYY-MM-DD
                 usuarioNome, 
                 prato, 
                 periodo, 
@@ -146,7 +159,7 @@ app.post('/baixa', (req, res) => {
 
     try {
         realizarBaixa(itens);
-        res.json({ message: "Estoque atualizado com sucesso!" });
+        res.json({ message: "Estoque atualizado!" });
     } catch (error) {
         res.status(400).json({ error: error.message });
     }

@@ -47,7 +47,7 @@ body {
     color: white;
     display: flex;
     align-items: center;
-    justify-content: space-between; /* Ajustado para separar avatar do botão fechar */
+    justify-content: space-between;
     position: relative;
 }
 
@@ -67,6 +67,7 @@ body {
     margin-left: 12px;
     display: flex;
     flex-direction: column;
+    text-align: left;
 }
 
 #profile-name {
@@ -83,7 +84,6 @@ body {
     opacity: 0.9;
 }
 
-/* BOTÃO FECHAR (X) DENTRO DO MENU */
 .close-btn {
     background: rgba(255, 255, 255, 0.1);
     border: none;
@@ -99,11 +99,8 @@ body {
     transition: background 0.2s;
 }
 
-.close-btn:hover {
-    background: var(--danger);
-}
+.close-btn:hover { background: var(--danger); }
 
-/* BOTÃO DAS 3 BARRINHAS (MENU TOGGLE) */
 .menu-toggle {
     position: fixed;
     top: 20px;
@@ -124,30 +121,45 @@ body {
     transition: all 0.3s ease;
 }
 
-.menu-toggle:hover {
-    background: var(--primary-dark);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 15px rgba(37, 99, 235, 0.4);
-}
-
 /* --- ESTRUTURA DAS CAIXAS --- */
 .box {
     background: white;
-    padding: 2.5rem;
+    padding: 2rem;
     border-radius: 16px;
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
     width: 100%;
-    max-width: 400px;
+    max-width: 450px;
     text-align: center;
     margin: 20px;
 }
 
-/* Ajuste para telas maiores (Diretor) */
-#diretor-view {
-    max-width: 900px;
-    padding-top: 3rem; /* Espaço para não bater no botão do menu */
+#diretor-view, #cozinha-view {
+    max-width: 800px;
 }
 
+/* --- SISTEMA DE ABAS (NOVO) --- */
+.tab-btn {
+    background: transparent;
+    color: #64748b;
+    transition: all 0.3s ease;
+}
+
+.tab-btn.active {
+    background: white !important;
+    color: var(--primary) !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.tab-content {
+    animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- FORMULÁRIOS --- */
 input, select {
     width: 100%;
     padding: 0.8rem;
@@ -157,20 +169,12 @@ input, select {
     box-sizing: border-box;
     font-size: 1rem;
     background-color: #fcfcfc;
-    transition: border 0.2s;
 }
 
 input:focus, select:focus {
     outline: none;
     border-color: var(--primary);
     background-color: white;
-}
-
-/* Estilo para o campo de Token */
-#token-acesso {
-    border: 2px solid #dbeafe; /* Azul clarinho para destacar */
-    font-weight: bold;
-    letter-spacing: 2px;
 }
 
 button {
@@ -187,43 +191,33 @@ button {
 }
 
 button:hover {
-    background-color: var(--primary-dark);
     filter: brightness(1.1);
+    transform: translateY(-1px);
 }
 
-.sidebar-menu {
-    padding: 10px 20px;
-}
+.hidden { display: none !important; }
 
-.sidebar-menu a {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 0;
-    text-decoration: none;
-    color: var(--text);
-    border-bottom: 1px solid #f8fafc;
-    font-weight: 500;
+/* --- CUSTOM SCROLLBAR --- */
+#lista-dia::-webkit-scrollbar {
+    width: 6px;
 }
-
-.menu-divider {
-    height: 1px;
-    background: #f1f5f9;
-    margin: 15px 0;
-}
-
-.hidden {
-    display: none !important;
+#lista-dia::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
 }
 
 /* --- RESPONSIVIDADE --- */
-@media (max-width: 600px) {
+@media (max-width: 768px) {
     .box {
         padding: 1.5rem;
         margin: 10px;
     }
     
-    #diretor-view {
-        grid-template-columns: 1fr !important; /* Força os cards do diretor a ficarem em uma coluna no celular */
+    #diretor-view .tab-content div {
+        grid-template-columns: 1fr !important; /* Stack columns on mobile */
+    }
+
+    .tabs-container {
+        font-size: 0.8rem;
     }
 }

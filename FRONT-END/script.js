@@ -2,9 +2,11 @@ const API_URL = 'http://localhost:3000';
 let usuarioLogado = null;
 let meuGrafico = null;
 let estoqueLocal = []; 
-let itensParaBaixa = []; // Lista temporária para a cozinha
+let itensParaBaixa = []; 
 
-// --- FUNÇÃO DE DATA E HORA ---
+// ==========================================
+// 1. DATA E INTERFACE
+// ==========================================
 
 function atualizarDataVisor() {
     const agora = new Date();
@@ -23,18 +25,19 @@ function atualizarDataVisor() {
     }
 
     if (usuarioLogado && usuarioLogado.cargo === 'Diretor') {
-        verGastoDoDia();
+        const inicio = document.getElementById('filtro-data-inicio')?.value;
+        if (!inicio) verGastoDoDia();
     }
 }
 
 atualizarDataVisor();
-setInterval(atualizarDataVisor, 3600000);
-
-// --- FUNÇÕES DE INTERFACE (MENU E PERFIL) ---
+setInterval(atualizarDataVisor, 60000);
 
 function toggleMenu() {
     const sidebar = document.getElementById('sidebar');
-    if (sidebar) sidebar.classList.toggle('open');
+    if (sidebar) {
+        sidebar.classList.toggle('open');
+    }
 }
 
 function ajustarBrilho(valor) {
@@ -48,24 +51,76 @@ function logout() {
     }
 }
 
-// --- FUNÇÃO DE AUTENTICAÇÃO COM TOKEN ---
+// ==========================================
+// 2. CONTROLE DE ACESSO (LOGIN E CADASTRO)
+// ==========================================
 
-async function logar() {
-    const cargo = document.getElementById('cargo').value;
-    const nome = document.getElementById('nome').value;
-    const sobrenome = document.getElementById('sobrenome').value;
-    const email = document.getElementById('email').value;
-    const cpf = document.getElementById('cpf').value;
-    const token = document.getElementById('token-acesso').value;
-    const termos = document.getElementById('termos').checked;
+function mudarAba(tipo) {
+    const btnLogin = document.getElementById('tab-login');
+    const btnReg = document.getElementById('tab-cadastro');
+    const formLogin = document.getElementById('form-login');
+    const formReg = document.getElementById('form-cadastro');
+
+    if (tipo === 'login') {
+        formLogin.classList.remove('hidden');
+        formReg.classList.add('hidden');
+        btnLogin.style.borderBottom = "2px solid #2563eb";
+        btnLogin.style.color = "#2563eb";
+        btnReg.style.borderBottom = "none";
+        btnReg.style.color = "#64748b";
+    } else {
+        formLogin.classList.add('hidden');
+        formReg.classList.remove('hidden');
+        btnReg.style.borderBottom = "2px solid #2563eb";
+        btnReg.style.color = "#2563eb";
+        btnLogin.style.borderBottom = "none";
+        btnLogin.style.color = "#64748b";
+    }
+}
+
+async function executarCadastro() {
+    const cargo = document.getElementById('reg-cargo').value;
+    const nome = document.getElementById('reg-nome').value;
+    const sobrenome = document.getElementById('reg-sobrenome').value;
+    const email = document.getElementById('reg-email').value;
+    const cpf = document.getElementById('reg-cpf').value;
+    const termos = document.getElementById('reg-termos').checked;
 
     if (!termos) {
         alert("Você precisa aceitar os Termos de Uso.");
         return;
     }
 
-    if (!nome || !email || !token || !cpf) {
-        alert("Por favor, preencha todos os campos e insira o Token do seu cargo.");
+    if (!nome || !email || !cpf) {
+        alert("Por favor, preencha Nome, E-mail e CPF.");
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/usuarios/registrar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cargo, nome, sobrenome, email, cpf })
+        });
+
+        if (response.ok) {
+            alert("✅ Cadastro realizado com sucesso! Vá para a aba 'Entrar'.");
+            mudarAba('login');
+        } else {
+            const erro = await response.json();
+            alert("Erro no cadastro: " + erro.error);
+        }
+    } catch (error) {
+        alert("Erro de conexão com o servidor.");
+    }
+}
+
+async function executarLogin() {
+    const cpf = document.getElementById('login-cpf').value;
+    const token = document.getElementById('login-token').value;
+
+    if (!cpf || !token) {
+        alert("Insira CPF e o Token do cargo.");
         return;
     }
 
@@ -73,83 +128,67 @@ async function logar() {
         const response = await fetch(`${API_URL}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                email, 
-                cargo, 
-                token, 
-                nome, 
-                sobrenome, 
-                cpf 
-            })
+            body: JSON.stringify({ cpf, token })
         });
 
         const data = await response.json();
 
-        if (!response.ok) throw new Error(data.error || "Acesso negado.");
-
-        usuarioLogado = data;
-        
-        // MEMORIZAR DADOS PARA O PERFIL NA SIDEBAR
-        const dadosPerfil = {
-            nome: usuarioLogado.nome,
-            sobrenome: usuarioLogado.sobrenome,
-            cargo: usuarioLogado.cargo,
-            email: usuarioLogado.email
-        };
-        localStorage.setItem('usuarioMemorizado', JSON.stringify(dadosPerfil));
-
-        // ATUALIZAR INTERFACE DA SIDEBAR
-        document.getElementById('profile-name').innerText = `${usuarioLogado.nome} ${usuarioLogado.sobrenome}`;
-        document.getElementById('profile-role').innerText = usuarioLogado.cargo;
-        document.getElementById('menu-toggle').classList.remove('hidden');
-
-        // TROCAR TELAS
-        document.getElementById('login-view').classList.add('hidden');
-        atualizarDataVisor(); 
-        
-        if (usuarioLogado.cargo === 'Cozinheira') {
-            document.getElementById('cozinha-view').classList.remove('hidden');
-            document.getElementById('user-display').innerText = usuarioLogado.nome;
-            carregarSelectCozinha();
-        } 
-        else if (usuarioLogado.cargo === 'Diretor') {
-            document.getElementById('diretor-view').classList.remove('hidden');
-            document.getElementById('admin-display').innerText = usuarioLogado.nome;
+        if (response.ok) {
+            usuarioLogado = data;
             
-            renderizarGrafico();
-            verGastoDoDia();
-            carregarSelectExclusao();
-        }
+            document.getElementById('profile-name').innerText = `${usuarioLogado.nome} ${usuarioLogado.sobrenome}`;
+            document.getElementById('profile-role').innerText = usuarioLogado.cargo;
+            document.getElementById('menu-toggle').classList.remove('hidden');
+            document.getElementById('login-view').classList.add('hidden');
 
+            if (usuarioLogado.cargo === 'Cozinheira') {
+                document.getElementById('cozinha-view').classList.remove('hidden');
+                document.getElementById('user-display').innerText = usuarioLogado.nome;
+                carregarSelectCozinha();
+            } else if (usuarioLogado.cargo === 'Diretor') {
+                document.getElementById('diretor-view').classList.remove('hidden');
+                document.getElementById('admin-display').innerText = usuarioLogado.nome;
+                
+                // Inicializa os dados do diretor
+                verGastoDoDia();
+                carregarSelectExclusao();
+                renderizarGrafico();
+            }
+        } else {
+            alert("Acesso Negado: " + data.error);
+        }
     } catch (error) {
-        alert("Erro na Autenticação: " + error.message);
+        alert("Erro ao tentar logar.");
     }
 }
 
-// --- FUNÇÕES DA COZINHEIRA ---
+// ==========================================
+// 3. FUNÇÕES DA COZINHA
+// ==========================================
 
 async function carregarSelectCozinha() {
     try {
         const res = await fetch(`${API_URL}/lista-estoque`);
         estoqueLocal = await res.json();
         const select = document.getElementById('alimento');
-        if (!select) return;
-
-        select.innerHTML = estoqueLocal.length === 0 
-            ? '<option value="">Nenhum item disponível</option>'
-            : estoqueLocal.map(item => `<option value="${item.item}">${item.item}</option>`).join('');
         
-        mostrarInfoExtra();
+        if (select) {
+            select.innerHTML = estoqueLocal.map(item => `
+                <option value="${item.item}">${item.item}</option>
+            `).join('');
+            mostrarInfoExtra();
+        }
     } catch (error) {
-        console.error("Erro ao carregar estoque:", error);
+        console.error("Erro ao carregar estoque.");
     }
 }
 
 function mostrarInfoExtra() {
     const nomeSelecionado = document.getElementById('alimento').value;
     const item = estoqueLocal.find(i => i.item === nomeSelecionado);
-    if (item) {
-        document.getElementById('display-atual').innerText = `${item.quantidade} kg`;
+    const display = document.getElementById('display-atual');
+    if (item && display) {
+        display.innerText = `${item.quantidade} kg`;
     }
 }
 
@@ -158,12 +197,7 @@ function adicionarItemNaLista() {
     const quantidade = document.getElementById('qtd').value;
 
     if (!itemNome || !quantidade || quantidade <= 0) {
-        alert("Selecione o item e a quantidade corretamente.");
-        return;
-    }
-
-    if (itensParaBaixa.some(i => i.itemNome === itemNome)) {
-        alert("Este item já está na lista.");
+        alert("Informe uma quantidade válida.");
         return;
     }
 
@@ -171,10 +205,10 @@ function adicionarItemNaLista() {
 
     const listaUl = document.getElementById('lista-temporaria-itens');
     const li = document.createElement('li');
-    li.style = "display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 8px 0; font-size: 0.9rem;";
+    li.style = "display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee;";
     li.innerHTML = `
-        <span>🍴 <b>${itemNome}</b> - ${quantidade}kg</span>
-        <button onclick="removerDaListaTemporaria(this, '${itemNome}')" style="background:#ef4444; color:white; border:none; border-radius:4px; cursor:pointer; padding:2px 10px; font-size:0.7rem;">Remover</button>
+        <span>${itemNome} - ${quantidade}kg</span>
+        <button onclick="removerDaListaTemporaria(this, '${itemNome}')" style="background:red; color:white; border:none; padding:2px 5px; cursor:pointer;">X</button>
     `;
     listaUl.appendChild(li);
     document.getElementById('qtd').value = '';
@@ -188,15 +222,9 @@ function removerDaListaTemporaria(btn, nome) {
 async function enviarBaixaCompleta() {
     const prato = document.getElementById('prato-dia').value;
     const periodo = document.getElementById('periodo-refeicao').value;
-    const perfil = JSON.parse(localStorage.getItem('usuarioMemorizado'));
 
-    if (!prato) {
-        alert("Por favor, informe o nome do Prato do Dia.");
-        return;
-    }
-
-    if (itensParaBaixa.length === 0) {
-        alert("Adicione pelo menos um alimento.");
+    if (!prato || itensParaBaixa.length === 0) {
+        alert("Preencha o prato e adicione ingredientes.");
         return;
     }
 
@@ -208,26 +236,45 @@ async function enviarBaixaCompleta() {
                 prato, 
                 periodo, 
                 itens: itensParaBaixa, 
-                usuarioNome: perfil.nome 
+                usuarioNome: usuarioLogado.nome 
             })
         });
 
         if (response.ok) {
-            alert("✅ Registro concluído com sucesso!");
+            alert("✅ Baixa registrada!");
             itensParaBaixa = [];
             document.getElementById('lista-temporaria-itens').innerHTML = '';
             document.getElementById('prato-dia').value = '';
             carregarSelectCozinha();
         } else {
-            const data = await response.json();
-            alert("Erro: " + data.error);
+            const r = await response.json();
+            alert("Erro: " + r.error);
         }
-    } catch (error) {
-        alert("Erro na conexão com o servidor.");
+    } catch (e) {
+        alert("Erro na conexão.");
     }
 }
 
-// --- FUNÇÕES DO DIRETOR ---
+// ==========================================
+// 4. FUNÇÕES DO DIRETOR (ABAS E GERENCIAMENTO)
+// ==========================================
+
+// NOVA FUNÇÃO: Controle de navegação por abas
+function abrirAbaDiretor(event, abaId) {
+    const conteudos = document.querySelectorAll('.tab-content');
+    conteudos.forEach(c => c.classList.add('hidden'));
+
+    const botoes = document.querySelectorAll('.tab-btn');
+    botoes.forEach(b => b.classList.remove('active'));
+
+    document.getElementById(abaId).classList.remove('hidden');
+    event.currentTarget.classList.add('active');
+
+    // Refresh de dados específicos ao abrir a aba
+    if (abaId === 'aba-grafico') renderizarGrafico();
+    if (abaId === 'aba-historico') verGastoDoDia();
+    if (abaId === 'aba-estoque') carregarSelectExclusao();
+}
 
 async function carregarSelectExclusao() {
     try {
@@ -238,25 +285,31 @@ async function carregarSelectExclusao() {
             select.innerHTML = '<option value="">Selecione para excluir...</option>' + 
                 itens.map(i => `<option value="${i.item}">${i.item}</option>`).join('');
         }
-    } catch (error) {
-        console.error("Erro ao carregar lista de exclusão");
+    } catch (e) {
+        console.error("Erro no select de exclusão.");
     }
 }
 
 async function removerItemEstoque() {
     const item = document.getElementById('delete-alimento-select').value;
-    if (!item || !confirm(`⚠️ Deseja apagar permanentemente o item "${item}"?`)) return;
+    if (!item) {
+        alert("Escolha um item para apagar.");
+        return;
+    }
 
-    try {
-        const response = await fetch(`${API_URL}/estoque/${item}`, { method: 'DELETE' });
-        if (response.ok) {
-            alert("Item removido!");
-            carregarSelectExclusao();
-            renderizarGrafico();
-            verGastoDoDia();
+    if (confirm(`Tem certeza que deseja EXCLUIR o item ${item} do banco de dados?`)) {
+        try {
+            const res = await fetch(`${API_URL}/estoque/${item}`, { method: 'DELETE' });
+            if (res.ok) {
+                alert("✅ Item removido com sucesso!");
+                carregarSelectExclusao();
+                renderizarGrafico();
+            } else {
+                alert("Erro ao excluir do banco.");
+            }
+        } catch (err) {
+            alert("Erro de rede.");
         }
-    } catch (error) {
-        alert("Erro ao conectar.");
     }
 }
 
@@ -266,86 +319,141 @@ async function adicionarNovoEstoque() {
     const lote = document.getElementById('add-lote').value;
     const validade = document.getElementById('add-validade').value;
 
-    if (!item || !quantidade || !lote || !validade) {
-        alert("Preencha todos os campos.");
+    if (!item || !quantidade) {
+        alert("Nome e quantidade são obrigatórios.");
         return;
     }
 
     try {
-        const response = await fetch(`${API_URL}/estoque/adicionar`, {
+        const res = await fetch(`${API_URL}/estoque/adicionar`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ item, quantidade, lote, validade })
         });
 
-        if (response.ok) {
+        if (res.ok) {
             alert("✅ Estoque atualizado!");
             document.getElementById('add-nome').value = '';
             document.getElementById('add-qtd').value = '';
-            document.getElementById('add-lote').value = '';
-            document.getElementById('add-validade').value = '';
+            carregarSelectExclusao();
             renderizarGrafico();
             verGastoDoDia();
-            carregarSelectExclusao();
         }
-    } catch (error) {
-        alert("Erro na conexão.");
+    } catch (e) {
+        alert("Erro ao adicionar estoque.");
     }
+}
+
+async function filtrarPorData() {
+    const inicio = document.getElementById('filtro-data-inicio').value;
+    const fim = document.getElementById('filtro-data-fim').value;
+
+    if (!inicio || !fim) {
+        alert("Selecione o período inicial e final.");
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/relatorios/filtro?inicio=${inicio}&fim=${fim}`);
+        const logs = await response.json();
+        
+        exibirLogsNaTela(logs);
+        atualizarGraficoComDados(logs);
+    } catch (error) {
+        alert("Erro ao filtrar dados.");
+    }
+}
+
+function exibirLogsNaTela(logs) {
+    const container = document.getElementById('lista-dia');
+    if (!container) return;
+
+    if (logs.length === 0) {
+        container.innerHTML = "<p>Nenhum registro encontrado para este período.</p>";
+        return;
+    }
+
+    container.innerHTML = logs.map(g => {
+        const [ano, mes, dia] = g.data.split('-');
+        const dataBR = `${dia}/${mes}/${ano}`;
+
+        return `
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 10px 0;">
+                <div style="font-size: 0.85rem; text-align: left;">
+                    <small style="color: #2563eb; font-weight: bold;">📅 ${dataBR}</small><br>
+                    <strong>🍴 ${g.prato}</strong> (${g.periodo})<br>
+                    <span style="color: #64748b;">${g.usuario} retirou</span> 
+                    <b style="color: #e11d48;">${g.quantidade}kg</b> de ${g.item}
+                </div>
+                <button onclick="apagarLog('${g.timestamp}')" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size: 1.2rem;">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </div>
+        `;
+    }).join('');
 }
 
 async function verGastoDoDia() {
     try {
         const response = await fetch(`${API_URL}/relatorios`);
         const logs = await response.json();
-        const container = document.getElementById('lista-dia');
-        if (!container) return;
-
-        logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-
-        container.innerHTML = logs.length > 0 
-            ? logs.map(g => `
-                <div style="border-bottom: 1px solid #eee; padding: 10px 0; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <span style="color: #2563eb; font-size: 0.75rem; font-weight: bold;">📅 ${g.data}</span><br>
-                        <strong>🍴 ${g.prato} (${g.periodo})</strong><br>
-                        <span style="color: #64748b;">👤 ${g.usuario} retirou</span> 
-                        <b style="color: #e11d48;">${g.quantidade}kg</b> de ${g.item}
-                    </div>
-                    <button onclick="removerPratoRelatorio('${g.timestamp}')" style="background: none; border: none; cursor: pointer; color: #dc2626; font-size: 1.1rem;">🗑️</button>
-                </div>
-            `).join('')
-            : "<p style='color: #64748b;'>Nenhum histórico disponível.</p>";
+        exibirLogsNaTela(logs);
     } catch (e) {
-        console.error("Erro ao carregar gastos:", e);
+        console.error("Erro ao carregar logs.");
     }
 }
 
-async function removerPratoRelatorio(timestamp) {
-    if (!confirm("Deseja remover este registro?")) return;
-    try {
-        const response = await fetch(`${API_URL}/relatorios/${timestamp}`, { method: 'DELETE' });
-        if (response.ok) {
-            verGastoDoDia(); 
-            renderizarGrafico(); 
+async function apagarLog(timestamp) {
+    if (confirm("Deseja apagar este registro do histórico permanentemente?")) {
+        try {
+            const res = await fetch(`${API_URL}/relatorios/${timestamp}`, { method: 'DELETE' });
+            if (res.ok) {
+                const inicio = document.getElementById('filtro-data-inicio').value;
+                const fim = document.getElementById('filtro-data-fim').value;
+                
+                if (inicio && fim) {
+                    filtrarPorData();
+                } else {
+                    verGastoDoDia();
+                    renderizarGrafico();
+                }
+            }
+        } catch (e) {
+            alert("Erro ao apagar log.");
         }
-    } catch (error) {
-        alert("Erro de conexão.");
+    }
+}
+
+function atualizarGraficoComDados(logs) {
+    const resumo = {};
+    logs.forEach(log => {
+        resumo[log.item] = (resumo[log.item] || 0) + Number(log.quantidade);
+    });
+
+    if (meuGrafico) {
+        meuGrafico.data.labels = Object.keys(resumo);
+        meuGrafico.data.datasets[0].data = Object.values(resumo);
+        meuGrafico.update();
     }
 }
 
 async function renderizarGrafico() {
+    const canvasElement = document.getElementById('graficoGastos');
+    if (!canvasElement) return;
+
     try {
         const response = await fetch(`${API_URL}/relatorios`);
         const logs = await response.json();
+        
         const resumo = {};
         logs.forEach(log => {
             resumo[log.item] = (resumo[log.item] || 0) + Number(log.quantidade);
         });
 
-        const canvas = document.getElementById('graficoGastos');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        if (meuGrafico) meuGrafico.destroy();
+        const ctx = canvasElement.getContext('2d');
+        if (meuGrafico) {
+            meuGrafico.destroy();
+        }
 
         meuGrafico = new Chart(ctx, {
             type: 'bar',
@@ -365,6 +473,6 @@ async function renderizarGrafico() {
             }
         });
     } catch (error) {
-        console.error("Erro ao gerar gráfico");
+        console.error("Erro ao gerar gráfico.");
     }
 }
