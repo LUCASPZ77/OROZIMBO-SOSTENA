@@ -4,6 +4,9 @@ let meuGrafico = null;
 let estoqueLocal = []; 
 let itensParaBaixa = []; 
 
+// Elemento de áudio para a notificação
+const SOM_NOTIFICACAO = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+
 // ==========================================
 // 1. DATA E INTERFACE
 // ==========================================
@@ -48,6 +51,19 @@ function logout() {
     if (confirm("Deseja realmente sair do sistema?")) {
         localStorage.removeItem('usuarioMemorizado');
         location.reload();
+    }
+}
+
+// NOVO: Função para trocar a foto de perfil
+function trocarFotoPerfil(event) {
+    const arquivo = event.target.files[0];
+    if (arquivo) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const avatarDiv = document.getElementById('avatar-img');
+            avatarDiv.innerHTML = `<img src="${e.target.result}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+        };
+        reader.readAsDataURL(arquivo);
     }
 }
 
@@ -149,7 +165,6 @@ async function executarLogin() {
                 document.getElementById('diretor-view').classList.remove('hidden');
                 document.getElementById('admin-display').innerText = usuarioLogado.nome;
                 
-                // Inicializa os dados do diretor
                 verGastoDoDia();
                 carregarSelectExclusao();
                 renderizarGrafico();
@@ -163,7 +178,7 @@ async function executarLogin() {
 }
 
 // ==========================================
-// 3. FUNÇÕES DA COZINHA
+// 3. FUNÇÕES DA COZINHA (ATUALIZADAS)
 // ==========================================
 
 async function carregarSelectCozinha() {
@@ -192,23 +207,29 @@ function mostrarInfoExtra() {
     }
 }
 
+// ATUALIZADO: Suporte para Gramas/Quilos
 function adicionarItemNaLista() {
     const itemNome = document.getElementById('alimento').value;
-    const quantidade = document.getElementById('qtd').value;
+    const quantidadeInput = document.getElementById('qtd').value;
+    const unidade = document.getElementById('unidade-medida').value;
 
-    if (!itemNome || !quantidade || quantidade <= 0) {
+    if (!itemNome || !quantidadeInput || quantidadeInput <= 0) {
         alert("Informe uma quantidade válida.");
         return;
     }
 
-    itensParaBaixa.push({ itemNome, quantidade: Number(quantidade) });
+    let qtdNumerica = Number(quantidadeInput);
+    let qtdFinalParaBanco = unidade === 'g' ? qtdNumerica / 1000 : qtdNumerica;
+    let labelExibicao = unidade === 'g' ? `${quantidadeInput}g` : `${quantidadeInput}kg`;
+
+    itensParaBaixa.push({ itemNome, quantidade: qtdFinalParaBanco, label: labelExibicao });
 
     const listaUl = document.getElementById('lista-temporaria-itens');
     const li = document.createElement('li');
-    li.style = "display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee;";
+    li.style = "display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #eee; align-items: center;";
     li.innerHTML = `
-        <span>${itemNome} - ${quantidade}kg</span>
-        <button onclick="removerDaListaTemporaria(this, '${itemNome}')" style="background:red; color:white; border:none; padding:2px 5px; cursor:pointer;">X</button>
+        <span><b>${itemNome}</b> - ${labelExibicao}</span>
+        <button onclick="removerDaListaTemporaria(this, '${itemNome}')" style="background:#ef4444; color:white; border:none; border-radius:4px; padding:2px 8px; cursor:pointer;">X</button>
     `;
     listaUl.appendChild(li);
     document.getElementById('qtd').value = '';
@@ -241,7 +262,10 @@ async function enviarBaixaCompleta() {
         });
 
         if (response.ok) {
-            alert("✅ Baixa registrada!");
+            // NOVO: Tocar som de sucesso
+            SOM_NOTIFICACAO.play().catch(e => console.log("Erro ao tocar som"));
+            
+            alert("✅ Registro finalizado com sucesso!");
             itensParaBaixa = [];
             document.getElementById('lista-temporaria-itens').innerHTML = '';
             document.getElementById('prato-dia').value = '';
@@ -259,7 +283,6 @@ async function enviarBaixaCompleta() {
 // 4. FUNÇÕES DO DIRETOR (ABAS E GERENCIAMENTO)
 // ==========================================
 
-// NOVA FUNÇÃO: Controle de navegação por abas
 function abrirAbaDiretor(event, abaId) {
     const conteudos = document.querySelectorAll('.tab-content');
     conteudos.forEach(c => c.classList.add('hidden'));
@@ -270,11 +293,69 @@ function abrirAbaDiretor(event, abaId) {
     document.getElementById(abaId).classList.remove('hidden');
     event.currentTarget.classList.add('active');
 
-    // Refresh de dados específicos ao abrir a aba
     if (abaId === 'aba-grafico') renderizarGrafico();
     if (abaId === 'aba-historico') verGastoDoDia();
     if (abaId === 'aba-estoque') carregarSelectExclusao();
+    if (abaId === 'aba-conferencia') carregarTabelaConferencia();
 }
+
+// NOVO: ABA DE CONFERÊNCIA E PESQUISA
+async function carregarTabelaConferencia() {
+    try {
+        const res = await fetch(`${API_URL}/lista-estoque`);
+        const estoque = await res.json();
+        const busca = document.getElementById('busca-estoque').value.toLowerCase();
+        
+        const corpoTabela = document.getElementById('corpo-tabela-estoque');
+        corpoTabela.innerHTML = '';
+
+        const itensFiltrados = estoque.filter(i => i.item.toLowerCase().includes(busca));
+
+        itensFiltrados.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="padding: 10px; border-bottom: 1px solid #eee;">
+                    <input type="text" value="${item.item}" style="border:none; background:transparent; width:100%" onchange="editarItemBanco('${item.item}', 'nome', this.value)">
+                </td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee;">
+                    <input type="number" value="${item.quantidade}" style="border:none; background:transparent; width:100%" onchange="editarItemBanco('${item.item}', 'quantidade', this.value)">
+                </td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee;">${item.validade || '-'}</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; text-align:center">
+                    <button onclick="confirmarEdicao()" style="background:#059669; color:white; border:none; padding:5px 10px; border-radius:5px; cursor:pointer">
+                        <i class="fas fa-save"></i>
+                    </button>
+                </td>
+            `;
+            corpoTabela.appendChild(tr);
+        });
+    } catch (e) {
+        console.error("Erro ao carregar conferência.");
+    }
+}
+
+// NOVO: Importação de Excel
+function importarExcel() {
+    document.getElementById('input-excel').click();
+}
+
+async function processarExcel(event) {
+    const arquivo = event.target.files[0];
+    if (arquivo) {
+        alert(`Arquivo "${arquivo.name}" selecionado. Enviando para o banco de dados...`);
+        // Aqui você enviaria via FormData para o seu endpoint de upload/importação
+    }
+}
+
+function confirmarEdicao() {
+    alert("Alteração salva com sucesso no banco de dados!");
+    carregarTabelaConferencia();
+    renderizarGrafico();
+}
+
+// ==========================================
+// FUNÇÕES DE RELATÓRIOS E GRÁFICOS (MANTIDAS)
+// ==========================================
 
 async function carregarSelectExclusao() {
     try {

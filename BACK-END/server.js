@@ -83,19 +83,16 @@ app.post('/login', (req, res) => {
     }
 });
 
-// --- 4. RELATÓRIOS, HISTÓRICO E NOVA FUNÇÃO DE FILTRO ---
+// --- 4. RELATÓRIOS E FILTROS ---
 
-// ROTA ATUALIZADA: Pega tudo por padrão
 app.get('/relatorios', (req, res) => {
     const logs = db.prepare('SELECT * FROM consumo_log ORDER BY id DESC').all();
     res.json(logs);
 });
 
-// >>> NOVA FUNÇÃO: Rota para filtrar por data (Semana, Mês ou Dia) <<<
 app.get('/relatorios/filtro', (req, res) => {
     const { inicio, fim } = req.query; 
     try {
-        // Busca logs que estão entre a data de início e fim
         const logs = db.prepare(`
             SELECT * FROM consumo_log 
             WHERE data BETWEEN ? AND ? 
@@ -119,10 +116,10 @@ app.delete('/relatorios/:timestamp', (req, res) => {
     }
 });
 
-// --- 5. OPERAÇÕES DA COZINHA (ESTOQUE) ---
+// --- 5. OPERAÇÕES DA COZINHA (BAIXA E CONSULTA) ---
 
 app.get('/lista-estoque', (req, res) => {
-    const itens = db.prepare('SELECT * FROM estoque WHERE quantidade > 0').all();
+    const itens = db.prepare('SELECT * FROM estoque').all(); // Alterado para mostrar tudo, inclusive zerados para conferência
     res.json(itens);
 });
 
@@ -130,7 +127,6 @@ app.post('/baixa', (req, res) => {
     const { prato, periodo, itens, usuarioNome } = req.body;
     if (!itens || itens.length === 0) return res.status(400).json({ error: "Lista vazia!" });
 
-    // Pegamos a data atual no formato YYYY-MM-DD para o filtro funcionar 100%
     const dataHoje = new Date().toISOString().split('T')[0];
 
     const realizarBaixa = db.transaction((lista) => {
@@ -148,7 +144,7 @@ app.post('/baixa', (req, res) => {
             `).run(
                 r.itemNome, 
                 Number(r.quantidade), 
-                dataHoje, // Gravando YYYY-MM-DD
+                dataHoje, 
                 usuarioNome, 
                 prato, 
                 periodo, 
@@ -165,18 +161,31 @@ app.post('/baixa', (req, res) => {
     }
 });
 
-// --- 6. OPERAÇÕES DO DIRETOR ---
+// --- 6. OPERAÇÕES DO DIRETOR (GERENCIAMENTO AVANÇADO) ---
 
+// NOVA ROTA: Edição direta via aba de conferência
+app.put('/estoque/editar', (req, res) => {
+    const { itemOriginal, novoNome, novaQtd } = req.body;
+    try {
+        db.prepare('UPDATE estoque SET item = ?, quantidade = ? WHERE item = ?')
+          .run(novoNome, Number(novaQtd), itemOriginal);
+        res.json({ message: "Item atualizado com sucesso!" });
+    } catch (error) {
+        res.status(500).json({ error: "Erro ao editar item: " + error.message });
+    }
+});
+
+// ROTA MANTIDA: Adicionar ou incrementar estoque
 app.post('/estoque/adicionar', (req, res) => {
-    const { item, quantidade, lote, validade } = req.body;
+    const { item, quantidade, lote, validade, unidade } = req.body;
     try {
         const itemExistente = db.prepare('SELECT id FROM estoque WHERE item = ?').get(item);
         if (itemExistente) {
-            db.prepare('UPDATE estoque SET quantidade = quantidade + ?, lote = ?, validade = ? WHERE item = ?')
-              .run(Number(quantidade), lote, validade, item);
+            db.prepare('UPDATE estoque SET quantidade = quantidade + ?, lote = ?, validade = ?, unidade = ? WHERE item = ?')
+              .run(Number(quantidade), lote, validade, unidade || 'kg', item);
         } else {
-            db.prepare('INSERT INTO estoque (item, quantidade, lote, validade) VALUES (?, ?, ?, ?)')
-              .run(item, Number(quantidade), lote, validade);
+            db.prepare('INSERT INTO estoque (item, quantidade, lote, validade, unidade) VALUES (?, ?, ?, ?, ?)')
+              .run(item, Number(quantidade), lote, validade, unidade || 'kg');
         }
         res.json({ message: "Estoque atualizado!" });
     } catch (error) {
@@ -190,6 +199,17 @@ app.delete('/estoque/:item', (req, res) => {
         res.json({ message: "Item removido." });
     } catch (error) {
         res.status(500).json({ error: "Erro ao excluir." });
+    }
+});
+
+// NOVA ROTA: Exportar dados (Backup)
+app.get('/sistema/exportar', (req, res) => {
+    try {
+        const estoque = db.prepare('SELECT * FROM estoque').all();
+        const logs = db.prepare('SELECT * FROM consumo_log').all();
+        res.json({ estoque, logs, dataExportacao: new Date().toISOString() });
+    } catch (error) {
+        res.status(500).json({ error: "Erro ao exportar dados." });
     }
 });
 

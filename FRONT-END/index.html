@@ -11,7 +11,13 @@
 
     <div id="sidebar" class="sidebar">
         <div class="sidebar-header">
-            <div class="user-avatar">👤</div>
+            <label for="upload-foto" style="cursor: pointer; position: relative;">
+                <div class="user-avatar" id="avatar-img">👤</div>
+                <div style="position: absolute; bottom: 0; right: 0; background: #2563eb; color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; border: 2px solid white;">
+                    <i class="fas fa-camera"></i>
+                </div>
+                <input type="file" id="upload-foto" hidden accept="image/*" onchange="trocarFotoPerfil(event)">
+            </label>
             <div class="user-info">
                 <span id="profile-name">Usuário</span>
                 <small id="profile-role">Cargo</small>
@@ -105,7 +111,15 @@
                 <label>Ingrediente do Estoque:</label>
                 <select id="alimento" onchange="mostrarInfoExtra()"></select>
                 <p style="font-size: 0.8rem; color: #64748b; margin-top: 5px;">Disponível: <span id="display-atual" style="font-weight: bold; color: #2563eb;">-</span></p>
-                <input type="number" id="qtd" placeholder="Qtd Gasta (kg/un)" step="0.01">
+                
+                <div style="display: flex; gap: 8px;">
+                    <input type="number" id="qtd" placeholder="Qtd Gasta" step="0.01" style="flex: 2;">
+                    <select id="unidade-medida" style="flex: 1;">
+                        <option value="kg">kg</option>
+                        <option value="g">gramas</option>
+                    </select>
+                </div>
+                
                 <button onclick="adicionarItemNaLista()" style="background: #3b82f6;">➕ Adicionar Ingrediente</button>
             </div>
 
@@ -133,11 +147,14 @@
             <button class="tab-btn active" style="flex: 1; padding: 10px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold;" onclick="abrirAbaDiretor(event, 'aba-grafico')">
                 <i class="fas fa-chart-bar"></i> Consumo
             </button>
+            <button class="tab-btn" style="flex: 1; padding: 10px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold;" onclick="abrirAbaDiretor(event, 'aba-conferencia')">
+                <i class="fas fa-search"></i> Conferir
+            </button>
             <button class="tab-btn" style="flex: 1; padding: 10px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold;" onclick="abrirAbaDiretor(event, 'aba-historico')">
                 <i class="fas fa-history"></i> Histórico
             </button>
             <button class="tab-btn" style="flex: 1; padding: 10px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold;" onclick="abrirAbaDiretor(event, 'aba-estoque')">
-                <i class="fas fa-boxes-stacked"></i> Estoque
+                <i class="fas fa-boxes-stacked"></i> Gerenciar
             </button>
         </div>
 
@@ -152,13 +169,35 @@
             </div>
         </div>
 
+        <div id="aba-conferencia" class="tab-content hidden">
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <input type="text" id="busca-estoque" placeholder="🔍 Pesquisar alimento..." oninput="carregarTabelaConferencia()" style="margin: 0;">
+                <button onclick="importarExcel()" style="width: auto; background: #1d4ed8; white-space: nowrap;"><i class="fas fa-file-excel"></i> Importar Excel</button>
+                <input type="file" id="input-excel" hidden accept=".xlsx, .xls" onchange="processarExcel(event)">
+            </div>
+            <div style="overflow-x: auto; background: #fff; border-radius: 10px; border: 1px solid #eee;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+                    <thead>
+                        <tr style="background: #f8fafc; border-bottom: 2px solid #eee;">
+                            <th style="padding: 12px;">Produto</th>
+                            <th style="padding: 12px;">Qtd (kg)</th>
+                            <th style="padding: 12px;">Validade</th>
+                            <th style="padding: 12px; text-align: center;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="corpo-tabela-estoque">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+
         <div id="aba-historico" class="tab-content hidden">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <h4 style="margin:0;">Relatório de Baixas</h4>
                 <button onclick="location.reload()" style="background: #64748b; width: auto; font-size: 0.75rem; padding: 5px 10px;">Resetar</button>
             </div>
             <div id="lista-dia" style="background: #fcfcfc; border: 1px solid #eee; border-radius: 10px; max-height: 450px; overflow-y: auto; padding: 15px;">
-                </div>
+            </div>
         </div>
 
         <div id="aba-estoque" class="tab-content hidden">
@@ -175,13 +214,15 @@
                 
                 <div style="text-align: left; background: #fff1f2; padding: 20px; border-radius: 15px; border: 1px solid #fecaca;">
                     <h4 style="color: #be123c; margin-top: 0;"><i class="fas fa-trash-alt"></i> Excluir do Banco</h4>
-                    <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 10px;">Remova o produto permanentemente do sistema.</p>
+                    <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 10px;">Remova o produto permanentemente.</p>
                     <select id="delete-alimento-select" style="margin-bottom: 15px;"></select>
                     <button onclick="removerItemEstoque()" style="background: #e11d48;">Excluir Produto</button>
                 </div>
             </div>
         </div>
     </div>
+
+    <audio id="notificacao-som" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="script.js"></script>
